@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yes3"
+version = "0.0.1"
+authors = [
+  { name="Erik Schomburg", email="eschomburg@gmail.com" },
+]
+description = "A simple, intuitive, flexible interface for Amazon S3"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+  "boto3",
+  "numpy",
+  "pandas",
+]
+
+[project.optional-dependencies]
+dev = [
+    "moto",
+    "pytest",
+]
+
+[project.urls]
+Homepage = "https://github.com/eschombu/yes3"
+Issues = "https://github.com/eschombu/yes3/issues"
+
+
