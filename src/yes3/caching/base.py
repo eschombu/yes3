@@ -247,6 +247,19 @@ class MultiCache(CacheCoreMethods):
     def __iter__(self) -> Iterator[Cache]:
         return iter(self._caches)
 
+    def activate(self) -> Self:
+        for cache in self:
+            cache.activate()
+        return self
+
+    def deactivate(self) -> Self:
+        for cache in self:
+            cache.deactivate()
+        return self
+
+    def is_active(self) -> bool:
+        return any(cache.is_active() for cache in self)
+
     def initialize(self, reinit=False) -> Self:
         for cache in self:
             if not cache.is_initialized() or reinit:
@@ -265,13 +278,13 @@ class MultiCache(CacheCoreMethods):
             self._caches.append(cache)
         return self
 
-    def __contains__(self, key):
+    def __contains__(self, key: str):
         for cache in self:
             if key in cache:
                 return True
         return False
 
-    def get(self, key, default=UNSPECIFIED):
+    def get(self, key: str, default=UNSPECIFIED):
         result = UNSPECIFIED
         for cache in self:
             if key in cache:
@@ -290,7 +303,7 @@ class MultiCache(CacheCoreMethods):
                     cache.put(key, result)
         return result
 
-    def put(self, key, obj, *, update=False) -> Self:
+    def put(self, key: str, obj, *, update=False) -> Self:
         for cache in self:
             if cache.is_read_only():
                 continue
@@ -299,8 +312,34 @@ class MultiCache(CacheCoreMethods):
                 break
         return self
 
+    def update(self, key: str, obj) -> Self:
+        if key not in self:
+            raise_not_found(key)
+        return self.put(key, obj, update=True)
+
+    def remove(self, key) -> Self:
+        for cache in self:
+            if key in cache:
+                cache.remove(key)
+        return self
+
+    def pop(self, key, default=UNSPECIFIED):
+        item = self.get(key, default=default)
+        if key in self:
+            self.remove(key)
+        return item
+
+    def keys(self) -> list[str]:
+        if not self.is_active():
+            return []
+        else:
+            keys = []
+            for cache in self:
+                keys.extend(cache.keys())
+            return list(set(keys))
+
     def __repr__(self):
-        return f"{type(self).__name__}({', '.join([str(c) for c in self._caches])})"
+        return f"{type(self).__name__}({', '.join([str(cache) for cache in self])})"
 
 
 class Serializer(metaclass=ABCMeta):
