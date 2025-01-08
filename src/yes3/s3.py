@@ -1,5 +1,6 @@
 import json
 import os
+import pickle
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -518,9 +519,11 @@ def read(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, file_
         file_type = ext.lstrip('.')
 
     if file_type is not None:
-        file_type = file_type.lower()
+        file_type = file_type.lstrip('.').lower()
 
-    if file_type == 'json':
+    if file_type == 'pkl':
+        return pickle.load(body)
+    elif file_type == 'json':
         return json.load(body)
     elif file_type == 'npy':
         return np.load(body)
