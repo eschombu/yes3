@@ -5,6 +5,8 @@ from pathlib import Path
 
 from moto import mock_aws
 
+from yes3.s3 import S3Location
+
 this_dir = Path(__file__).resolve().parent
 repo_root = this_dir.parent.parent
 
@@ -15,12 +17,11 @@ except ModuleNotFoundError:
     from tests import get_arg_parser, run_tests
 
 try:
-    from yes3.caching import CacheNotInitializedError, LocalDiskCache, MultiCache, S3Cache
+    from yes3.caching import Cache, CacheNotInitializedError, LocalDiskCache, MultiCache, S3Cache
 except ModuleNotFoundError:
     sys.path.insert(0, str(repo_root / 'src'))
-    from yes3.caching import CacheNotInitializedError, LocalDiskCache, MultiCache, S3Cache
+    from yes3.caching import Cache, CacheNotInitializedError, LocalDiskCache, MultiCache, S3Cache
 from yes3 import s3
-from yes3.caching.base import CatalogCache
 
 TEST_LOCAL_DIR = Path('_tmp_test_dir_')
 TEST_BUCKET = 'mock-bucket'
@@ -50,24 +51,22 @@ data = {'i': 42, 's': 'hello world'}
 updated_data = data.copy()
 updated_data['i'] = 43
 key = 'test_data'
-path = TEST_LOCAL_DIR / (key + '.pkl')
+local_path = TEST_LOCAL_DIR / (key + '.pkl')
+s3_loc = S3Location(TEST_S3_DIR).join(key)
 
 
 class TestLocalDiskCache(unittest.TestCase):
-    def _test_cache_state(self, cache: CatalogCache):
+    def _test_cache_state(self, cache: Cache):
         # Test cache state (active & initialized)
         self.assertFalse(cache.is_active())
-        cache.activate()
-        self.assertTrue(cache.is_active())
-        self.assertFalse(cache.is_initialized())
-
-        with self.assertRaises(CacheNotInitializedError):
-            _ = key in cache
         cache.initialize()
         self.assertTrue(cache.is_initialized())
+        cache.activate()
+        self.assertTrue(cache.is_active())
 
-    def _test_missing_data(self, cache: CatalogCache):
+    def _test_missing_data(self, cache: Cache):
         # Test checking and getting data that is not present
+        path = s3_loc if isinstance(cache.path, S3Location) else local_path
         self.assertFalse(key in cache)
         self.assertFalse(path.exists())
         with self.assertRaises(KeyError):
@@ -77,20 +76,20 @@ class TestLocalDiskCache(unittest.TestCase):
         retrieved = cache.get(key, default=None)
         self.assertIsNone(retrieved)
 
-    def _test_adding_data(self, cache: CatalogCache):
+    def _test_adding_data(self, cache: Cache):
         # Test adding and retrieving data
+        path = s3_loc if isinstance(cache.path, S3Location) else local_path
         cache.put(key, data)
         self.assertTrue(key in cache)
         retrieved = cache.get(key)
         self.assertEqual(retrieved, data)
         self.assertEqual(list(cache.keys()), [key])
-        self.assertEqual(list(cache), [key])
         self.assertTrue(path.exists())
 
         retrieved = cache[key]
         self.assertEqual(retrieved, data)
 
-    def _test_updating_data(self, cache: CatalogCache):
+    def _test_updating_data(self, cache: Cache):
         # Test updating data for existing key
         with self.assertRaises(ValueError):
             cache.put(key, updated_data)
@@ -104,8 +103,9 @@ class TestLocalDiskCache(unittest.TestCase):
         self.assertEqual(retrieved, data)
         self.assertNotEqual(retrieved, updated_data)
 
-    def _test_removing_data(self, cache: CatalogCache):
+    def _test_removing_data(self, cache: Cache):
         # Test removing data
+        path = s3_loc if isinstance(cache.path, S3Location) else local_path
         cache.remove(key)
         self.assertFalse(key in cache)
         self.assertIsNone(cache.get(key, None))
@@ -119,26 +119,24 @@ class TestLocalDiskCache(unittest.TestCase):
         self.assertFalse(path.exists())
         self.assertEqual(retrieved, data)
 
-    def _test_initializing_local_cache_with_data(self, cache: CatalogCache):
+    def _test_initializing_local_cache_with_data(self, cache: Cache):
         # Test initializing cache when there is existing data in its location
         cache.put(key, data)
-        new_cache = LocalDiskCache(TEST_LOCAL_DIR).initialize()
+        new_cache = LocalDiskCache.create(TEST_LOCAL_DIR).initialize()
         self.assertTrue(key in new_cache)
         retrieved = new_cache.get(key)
         self.assertEqual(retrieved, data)
 
     def _test_clearing_local_cache(self, cache: LocalDiskCache):
         # Test clearing cache
+        path = local_path
         if key not in cache:
             cache.put(key, data)
-        second_cache = LocalDiskCache(cache.local_path).initialize()
+        second_cache = LocalDiskCache.create(cache.path).initialize()
         self.assertTrue(key in second_cache)
         with self.assertRaises(RuntimeError):
             cache.clear()
-        cache.clear(force=True)
-        with self.assertRaises(CacheNotInitializedError):
-            _ = key in cache
-        cache.initialize()
+        cache.clear(force=True, initialize=True)
         self.assertFalse(key in cache)
         self.assertEqual(len(cache.keys()), 0)
         retrieved = cache.get(key, None)
@@ -157,22 +155,23 @@ class TestLocalDiskCache(unittest.TestCase):
         self._test_clearing_local_cache(cache)
 
     def test_local_cache(self):
-        cache = LocalDiskCache(TEST_LOCAL_DIR, active=False)
+        cache = LocalDiskCache.create(TEST_LOCAL_DIR, active=False)
         self._run_local_tests(cache)
 
     def _test_initializing_s3_cache_with_data(self, cache: S3Cache):
         # Test initializing cache when there is existing data in its location
         cache.put(key, data)
-        new_cache = S3Cache(TEST_S3_DIR).initialize()
+        new_cache = S3Cache.create(TEST_S3_DIR).initialize()
         self.assertTrue(key in new_cache)
         retrieved = new_cache.get(key)
         self.assertEqual(retrieved, data)
 
     def _test_clearing_s3_cache(self, cache: S3Cache):
+        path = s3_loc
         # Test clearing cache
         if key not in cache:
             cache.put(key, data)
-        second_cache = S3Cache(cache.s3_location).initialize()
+        second_cache = S3Cache.create(cache.path).initialize()
         self.assertTrue(key in second_cache)
         with self.assertRaises(RuntimeError):
             cache.clear()
@@ -199,7 +198,8 @@ class TestLocalDiskCache(unittest.TestCase):
     def test_s3_cache(self):
         # moto (aws mock) requires the bucket be created before use
         s3._client.create_bucket(Bucket=TEST_BUCKET)
-        cache = S3Cache(TEST_S3_DIR)
+        cache = S3Cache.create(TEST_S3_DIR, active=False)
+        self._run_s3_tests(cache)
 
 
 if __name__ == '__main__':

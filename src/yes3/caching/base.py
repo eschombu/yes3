@@ -1,11 +1,5 @@
-import traceback
-from abc import ABC, ABCMeta, abstractmethod
-from copy import deepcopy
-from pathlib import Path
-from types import MappingProxyType
-from typing import Iterator, Mapping, Optional, Self, Iterable
-
-CatalogType = dict[str, Path]
+from abc import ABCMeta, abstractmethod
+from typing import Any, Iterator, Optional, Self
 
 class _UnspecifiedParamType:
     pass
@@ -34,14 +28,131 @@ class CacheCoreMethods(metaclass=ABCMeta):
         pass
 
 
+class CacheReaderWriter(metaclass=ABCMeta):
+    @abstractmethod
+    def read(self, key: str):
+        pass
+
+    @abstractmethod
+    def write(self, key: str, obj) -> str:
+        pass
+
+    @abstractmethod
+    def delete(self, key: str):
+        pass
+
+
+class CacheCatalog(metaclass=ABCMeta):
+    @abstractmethod
+    def contains(self, key: str):
+        pass
+
+    @abstractmethod
+    def add(self, key: str, value):
+        pass
+
+    @abstractmethod
+    def remove(self, key: str):
+        pass
+
+    @abstractmethod
+    def keys(self):
+        pass
+
+    @abstractmethod
+    def items(self):
+        pass
+
+    def initialize(self) -> Self:
+        assert self.is_initialized()
+        return self
+
+    def is_initialized(self) -> bool:
+        return True
+
+
+class CachePathDictCatalog(CacheCatalog):
+    def __init__(self, catalog: Optional[dict[str, Any]] = None):
+        self._catalog = catalog
+
+    def initialize(self, catalog: Optional[dict[str, Any]] = None) -> Self:
+        if catalog is None:
+            catalog: dict[str, Any] = {}
+        self._catalog = catalog
+        return self
+
+    def is_initialized(self) -> bool:
+        return self._catalog is not None
+
+    def contains(self, key: str):
+        return key in self._catalog
+
+    def add(self, key: str, value: Any):
+        self._catalog[key] = value
+
+    def remove(self, key: str):
+        del self._catalog[key]
+
+    def keys(self):
+        return list(self._catalog.keys())
+
+    def items(self):
+        return iter(self._catalog.items())
+
+
 class Cache(CacheCoreMethods, metaclass=ABCMeta):
-    def __init__(self, active=True, read_only=False):
+    def __init__(self, catalog: CacheCatalog, reader_writer: CacheReaderWriter, active=True, read_only=False):
         super().__init__()
+        self._catalog = catalog
+        self._reader_writer = reader_writer
         self._read_only = read_only
         self._active = active
 
+    @classmethod
+    @abstractmethod
+    def create(cls, *args, **kwargs):
+        pass
+
+    def __contains__(self, key: str) -> bool:
+        if not self.is_active():
+            return False
+        return self._catalog.contains(key)
+
+    def get(self, key: str, default=UNSPECIFIED):
+        if not self.is_active() or key not in self:
+            if default is UNSPECIFIED:
+                raise_not_found(key)
+            else:
+                return default
+        return self._reader_writer.read(key)
+
+    def put(self, key: str, obj, *, update=False) -> Self:
+        if self.is_read_only():
+            raise TypeError('Cache is in read only mode')
+        if self.is_active():
+            if key in self and not update:
+                raise ValueError(f"key '{key}' already exists in cache; use 'update' to overwrite")
+            path = self._reader_writer.write(key, obj)
+            self._catalog.add(key, path)
+        return self
+
+    def remove(self, key: str) -> Self:
+        if self.is_active() and key in self:
+            if self.is_read_only():
+                raise TypeError('Cache is in read only mode')
+            self._catalog.remove(key)
+            self._reader_writer.delete(key)
+        return self
+
+    def initialize(self) -> Self:
+        self._catalog.initialize()
+        return self
+
+    def is_initialized(self) -> bool:
+        return self._catalog.is_initialized()
+
     def is_active(self) -> bool:
-        return self._active
+        return self._active and self.is_initialized()
 
     def activate(self):
         self._active = True
@@ -58,64 +169,10 @@ class Cache(CacheCoreMethods, metaclass=ABCMeta):
         self._read_only = value
         return self
 
-    def initialize(self) -> Self:
-        return self
-
-    def is_initialized(self) -> bool:
-        return True
-
-    @abstractmethod
-    def _get(self, key: str):
-        pass
-
-    @abstractmethod
-    def _put(self, key: str, obj):
-        pass
-
-    @abstractmethod
-    def _remove(self, key: str) -> None:
-        pass
-
-    @abstractmethod
-    def _contains(self, key: str) -> bool:
-        pass
-
-    @abstractmethod
-    def _keys(self):
-        pass
-
-    def get(self, key: str, default=UNSPECIFIED):
-        if key not in self or not self.is_active():
-            if default is UNSPECIFIED:
-                raise_not_found(key)
-            else:
-                return default
-        return self._get(key)
-
-    def put(self, key: str, obj, *, update=False):
-        if self.is_read_only():
-            raise TypeError('Cache is in read only mode')
-        if self.is_active():
-            if key in self and not update:
-                raise ValueError(f"key '{key}' already exists in cache; use 'update' to overwrite")
-            self._put(key, obj)
-
     def update(self, key: str, obj):
         if key not in self:
             raise_not_found(key)
         self.put(key, obj, update=True)
-
-    def remove(self, key: str) -> Self:
-        if self.is_active() and key in self:
-            if self.is_read_only():
-                raise TypeError('Cache is in read only mode')
-            self._remove(key)
-        return self
-
-    def __contains__(self, key: str) -> bool:
-        if not self.is_active():
-            return False
-        return self._contains(key)
 
     def __getitem__(self, key: str):
         return self.get(key)
@@ -124,10 +181,13 @@ class Cache(CacheCoreMethods, metaclass=ABCMeta):
         if not self.is_active():
             return []
         else:
-            return list(self._keys())
+            return list(self._catalog.keys())
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.keys())
+    def items(self) -> Iterator[tuple[str, Any]]:
+        if not self.is_active():
+            return iter([])
+        else:
+            return self._catalog.items()
 
     def __setitem__(self, key: str, obj) -> None:
         self.put(key, obj)
@@ -139,65 +199,6 @@ class Cache(CacheCoreMethods, metaclass=ABCMeta):
         obj = self.get(key, default=default)
         self.remove(key)
         return obj
-
-
-class CatalogCache(Cache, metaclass=ABCMeta):
-    def __init__(
-            self,
-            catalog: Optional[CatalogType] = None,
-            active=True,
-            read_only=False,
-            auto_init=False,
-    ):
-        super().__init__(active=active, read_only=read_only)
-        self._catalog = catalog
-        self._auto_init = auto_init
-
-    @abstractmethod
-    def initialize(self):
-        pass
-
-    def is_initialized(self) -> bool:
-        return self._catalog is not None
-
-    def _check_initialized(self):
-        if not self.is_initialized():
-            if self._auto_init:
-                self.initialize()
-            else:
-                raise CacheNotInitializedError
-
-    def with_key_prefix(self, prefix: Optional[str]) -> Self:
-        copied = deepcopy(self)
-        copied._key_prefix = prefix
-        return copied
-
-    def _keys(self) -> Iterable[str]:
-        return self._catalog.keys()
-
-    @property
-    def catalog(self) -> Mapping[str, Path]:
-        return MappingProxyType(self._catalog)  # immutable
-
-    def _contains(self, key) -> bool:
-        self._check_initialized()
-        return key in self._catalog
-
-    def get(self, key, default=UNSPECIFIED):
-        self._check_initialized()
-        return super().get(key, default=default)
-
-    def put(self, key, obj, *, update=False) -> Self:
-        self._check_initialized()
-        return super().put(key, obj, update=update)
-
-    def keys(self) -> list[str]:
-        self._check_initialized()
-        return super().keys()
-
-    @abstractmethod
-    def _build_catalog(self) -> CatalogType:
-        pass
 
     def _repr_params(self) -> list[str]:
         params = []
