@@ -80,7 +80,7 @@ class LocalReaderWriter(CacheReaderWriter):
 
 class LocalDiskCache(Cache):
     @staticmethod
-    def _build_catalog(reader_writer: LocalReaderWriter) -> CachePathDictCatalog:
+    def _build_catalog_dict(reader_writer: LocalReaderWriter) -> dict:
         catalog_dict = {}
         for (dirpath, dirnames, filenames) in os.walk(reader_writer.path):
             for fname in filenames:
@@ -89,12 +89,13 @@ class LocalDiskCache(Cache):
                 if key in catalog_dict:
                     raise KeyError(f"Key already in cache catalog: '{key}'")
                 catalog_dict[key] = fpath
-        return CachePathDictCatalog(catalog_dict)
+        return catalog_dict
 
     @classmethod
     def create(cls, path: str | Path, serializer: str | Serializer = 'pkl', **kwargs):
         reader_writer = LocalReaderWriter(path, serializer)
-        catalog = cls._build_catalog(reader_writer)
+        catalog_dict = cls._build_catalog_dict(reader_writer)
+        catalog = CachePathDictCatalog(catalog_dict or None)
         return cls(catalog, reader_writer, **kwargs)
 
     @cached_property
@@ -108,7 +109,8 @@ class LocalDiskCache(Cache):
         self._log(f"Initializing cache at {self.path}")
         if not self.path.exists():
             os.makedirs(self.path, exist_ok=True)
-        self._catalog = self._build_catalog(self._reader_writer)
+        catalog_dict = self._build_catalog_dict(self._reader_writer)
+        self._catalog = CachePathDictCatalog(catalog_dict)
         if len(self.keys()) > 0:
             self._log(f'{len(self.keys())} cached items discovered')
         return self
@@ -123,7 +125,8 @@ class LocalDiskCache(Cache):
             else:
                 self._log(f'Deleting {len(self.keys())} from cache at {self.path}')
                 shutil.rmtree(self.path)
-                self._catalog = self._build_catalog(self._reader_writer)
+                catalog_dict = self._build_catalog_dict(self._reader_writer)
+                self._catalog = CachePathDictCatalog(catalog_dict or None)
         if initialize:
             self.initialize()
         return self
