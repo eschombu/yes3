@@ -459,7 +459,7 @@ def download(
     local_path = Path(local_path).resolve()
 
     if not location.exists():
-        raise ValueError(f'No object(s) present at {location.s3_uri}')
+        raise FileNotFoundError(f'No object(s) present at {location.s3_uri}')
     elif not location.is_object() and not recursive:
         raise ValueError(f'{location.s3_uri} is not a uri for a single object; '
                          'use `recursive=True` to download all objects with this prefix')
@@ -499,7 +499,7 @@ def delete(
 ):
     location = as_s3_location(bucket_or_location, prefix)
     if not location.exists():
-        raise ValueError(f'No object(s) at {location.s3_uri}')
+        raise FileNotFoundError(f'No object(s) at {location.s3_uri}')
     elif not location.is_object():
         if not recursive:
             raise ValueError(f'Multiple objects with prefix {location.s3_uri}, set `recursive=True` to delete them all')
@@ -542,7 +542,7 @@ def large_recursive_delete(bucket_or_location: S3LocationLike, prefix: Optional[
     """See https://serverfault.com/a/1123717"""
     location = as_s3_location(bucket_or_location, prefix)
     if not location.exists():
-        raise ValueError(f'No object(s) at {location.s3_uri}')
+        raise FileNotFoundError(f'No object(s) at {location.s3_uri}')
     elif location.is_object():
         raise ValueError(f'{location.s3_uri} is an object, not a prefix; use `delete` instead')
     else:
@@ -560,7 +560,7 @@ def large_recursive_delete(bucket_or_location: S3LocationLike, prefix: Optional[
 def list_many_objects(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, timeit=True) -> list[str]:
     location = as_s3_location(bucket_or_location, prefix)
     if not location.exists():
-        raise ValueError(f'No object(s) at {location.s3_uri}')
+        raise FileNotFoundError(f'No object(s) at {location.s3_uri}')
     elif location.is_object():
         return [location.s3_uri]
     else:
