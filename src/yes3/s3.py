@@ -49,7 +49,13 @@ def is_s3_url(s: str) -> bool:
 
 class S3Location:
     def __init__(self, bucket: str, key: Optional[str] = None, region: Optional[str] = None):
-        if is_s3_url(bucket):
+        if isinstance(bucket, S3Location):
+            loc = bucket
+            if key:
+                loc = loc.join(key)
+            self.bucket = loc.bucket
+            self.key = loc.key
+        elif is_s3_url(bucket):
             loc = type(self).parse(bucket)
             if key is not None:
                 loc = loc.join(key)
