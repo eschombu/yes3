@@ -1,10 +1,11 @@
 import os
 import pickle
 import shutil
+from functools import cached_property
 from pathlib import Path
 from typing import Optional, Self
 
-from yes3.caching.base import CatalogCache, Serializer
+from yes3.caching.base import Cache, CachePathDictCatalog, Serializer, CacheReaderWriter
 
 
 class PickleSerializer(Serializer):
@@ -14,12 +15,12 @@ class PickleSerializer(Serializer):
         with open(path, 'rb') as f:
             return pickle.load(f)
 
-    def write(self, obj, path):
+    def write(self, path, obj):
         with open(path, 'wb') as f:
             pickle.dump(obj, f)
 
 
-def _get_reader_writer(serializer: str | Serializer) -> Serializer:
+def _get_serializer(serializer: str | Serializer) -> Serializer:
     if isinstance(serializer, str):
         if serializer.lstrip('.').lower() in {'pkl', 'pickle'}:
             return PickleSerializer()
@@ -44,95 +45,90 @@ def _with_ext(path, ext: Optional[str]):
         return type(path)(path_str + ext)
 
 
-class LocalDiskCache(CatalogCache):
-    def __init__(
-            self,
-            local_path: Path | str,
-            serializer: str | Serializer = 'pkl',
-            read_only=False,
-            auto_init=False,
-            active=True,
-    ):
-        super().__init__(
-            active=active,
-            read_only=read_only,
-            auto_init=auto_init,
-        )
-        local_path = Path(local_path).resolve()
-        self.local_path = local_path
-        self._serializer = _get_reader_writer(serializer)
+class LocalReaderWriter(CacheReaderWriter):
+    def __init__(self, path: str | Path, serializer: str | Serializer = 'pkl'):
+        self.path = Path(path)
+        self._serializer = _get_serializer(serializer)
+
+    def key2path(self, key: str) -> Path:
+        return self.path / _with_ext(key, self._serializer.ext)
+
+    def path2key(self, path: str | Path) -> str:
+        path = Path(path)
+        rel_path = path.relative_to(self.path)
+        key, ext = os.path.splitext(rel_path)
+        return key
+
+    def read(self, key: str):
+        path = self.key2path(key)
+        self._log(f"Reading cached item '{key}' at {path}")
+        return self._serializer.read(path)
+
+    def write(self, key: str, obj):
+        path = self.key2path(key)
+        self._log(f"Caching item '{key}' at {path}")
+        self._serializer.write(path, obj)
+
+    def delete(self, key: str):
+        path = self.key2path(key)
+        self._log(f"Deleting cached item '{key}' at {path}")
+        os.remove(path)
+
+    def _log(self, *args, **kwargs):
+        print(*args, **kwargs)
+
+
+class LocalDiskCache(Cache):
+    @staticmethod
+    def _build_catalog(reader_writer: LocalReaderWriter) -> CachePathDictCatalog:
+        catalog_dict = {}
+        for (dirpath, dirnames, filenames) in os.walk(reader_writer.path):
+            for fname in filenames:
+                fpath = Path(dirpath) / fname
+                key = reader_writer.path2key(fpath)
+                if key in catalog_dict:
+                    raise KeyError(f"Key already in cache catalog: '{key}'")
+                catalog_dict[key] = fpath
+        return CachePathDictCatalog(catalog_dict)
+
+    @classmethod
+    def create(cls, path: str | Path, serializer: str | Serializer = 'pkl', **kwargs):
+        reader_writer = LocalReaderWriter(path, serializer)
+        catalog = cls._build_catalog(reader_writer)
+        return cls(catalog, reader_writer, **kwargs)
+
+    @cached_property
+    def path(self) -> Path:
+        return self._reader_writer.path
 
     def _log(self, *args, **kwargs):
         print(*args, **kwargs)
 
     def initialize(self) -> Self:
-        self._log(f"Initializing cache at {self.local_path}")
-        if not self.local_path.exists():
-            os.makedirs(self.local_path, exist_ok=True)
-        self._catalog = self._build_catalog()
-        if len(self._catalog) > 0:
-            self._log(f'{len(self._catalog)} cached items discovered')
+        self._log(f"Initializing cache at {self.path}")
+        if not self.path.exists():
+            os.makedirs(self.path, exist_ok=True)
+        self._catalog = self._build_catalog(self._reader_writer)
+        if len(self.keys()) > 0:
+            self._log(f'{len(self.keys())} cached items discovered')
         return self
 
     def is_initialized(self) -> bool:
-        return self.local_path.exists() and super().is_initialized()
-
-    def _key2path(self, key: str) -> Path:
-        return self.local_path / _with_ext(key, self._serializer.ext)
-
-    def _path2key(self, path: str | Path) -> str:
-        path = Path(path)
-        rel_path = path.relative_to(self.local_path)
-        key, ext = os.path.splitext(rel_path)
-        return key
-
-    def _build_catalog(self) -> dict[str, Path]:
-        catalog = {}
-        for (dirpath, dirnames, filenames) in os.walk(self.local_path):
-            for fname in filenames:
-                path = Path(dirpath) / fname
-                key = self._path2key(path)
-                if key in catalog:
-                    raise KeyError(f"Key already in cache catalog: '{key}'")
-                catalog[key] = path
-        return catalog
-
-    def _get(self, key: str):
-        path = self._catalog[key]
-        self._log(f'Loading cached item at {path}')
-        try:
-            return self._serializer.read(path)
-        except EOFError:
-            self._remove(key)
-            return None
-
-    def _put(self, key: str, obj):
-        path = self._key2path(key)
-        self._log(f'Caching item at {path}')
-        os.makedirs(path.parent, exist_ok=True)  # Allow for key to include subdirectories
-        self._serializer.write(obj, path)
-        self._catalog[key] = path
-
-    def _remove(self, key: str):
-        path = self._catalog.pop(key, None)
-        if path:
-            self._log(f'Removing file from cache: {path}')
-            os.remove(path)
+        return super().is_initialized() and self.path.exists()
 
     def clear(self, force=False, initialize=False) -> Self:
-        if self.is_active() and self._catalog and self.local_path.exists():
+        if self.is_active() and self._catalog and self.path.exists():
             if not force:
-                raise RuntimeError(f'Clearing this cache ({self.local_path}) requires specifying force=True')
+                raise RuntimeError(f'Clearing this cache ({self.path}) requires specifying force=True')
             else:
-                self._log(f'Deleting {len(self._catalog)} from cache at {self.local_path}')
-                shutil.rmtree(self.local_path)
-                self._catalog = self._build_catalog()
+                self._log(f'Deleting {len(self.keys())} from cache at {self.path}')
+                shutil.rmtree(self.path)
+                self._catalog = self._build_catalog(self._reader_writer)
         if initialize:
             self.initialize()
         return self
 
     def _repr_params(self) -> list[str]:
         params = super()._repr_params()
-        params.insert(0, str(self.local_path))
-        params.append(f"'{self._serializer.ext}'")
+        params.insert(0, str(self.path))
         return params
