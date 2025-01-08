@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from glob import glob
 from pathlib import Path
-from typing import Iterable, List, Optional, Self, Tuple, Union
+from typing import Iterable, Optional, Self
 from urllib.parse import quote, unquote, urlparse
 
 import numpy as np
@@ -16,9 +16,6 @@ import pandas as pd
 
 from .client import get_client as _get_client
 from .utils.decorators import timeit_opt
-
-S3LocationLike = Union[str, 'S3Location']
-LocalPathLike = Union[str, os.PathLike]
 
 DEFAULT_REGION = 'us-east-2'
 _client = _get_client()
@@ -147,7 +144,7 @@ class S3Location:
             return True
         return False
 
-    def split_key(self) -> Tuple[str, str]:
+    def split_key(self) -> tuple[str, str]:
         if self.key:
             if '/' not in self.key:
                 return '', self.key
@@ -162,6 +159,10 @@ class S3Location:
         if not parent_key:
             parent_key = None
         return type(self)(self.bucket, parent_key, self.region)
+
+
+S3LocationLike = str | S3Location
+LocalPathLike = str | os.PathLike
 
 
 def get_size_str(bytes: int) -> str:
@@ -238,10 +239,10 @@ def list_objects(
         prefix: Optional[str] = None,
         limit: Optional[int] = None,
         return_metadata: bool = False,
-) -> List[Union[S3Location, S3Object]]:
+) -> list[S3Location | S3Object]:
     location = as_s3_location(bucket_or_location, prefix)
 
-    def get_next_page(cont_token=None) -> [Optional[str], List[S3Object]]:
+    def get_next_page(cont_token=None) -> [Optional[str], list[S3Object]]:
         args = dict(Bucket=location.bucket, Prefix=location.key)
         if limit is not None and limit >= 0:
             args['MaxKeys'] = int(limit)
@@ -275,7 +276,7 @@ def list_dir(
         limit: Optional[int] = None,
         return_metadata: bool = False,
         count_only: bool = False,
-) -> Union[List[Union[S3Location, S3Object, S3Prefix]], int]:
+) -> list[S3Location | S3Object | S3Prefix] | int:
     location = as_s3_location(bucket_or_location, prefix)
     if location.is_dir() and not location.is_bucket():
         location = location.join('')
@@ -378,7 +379,7 @@ def upload(
         base_dir=None,
         # workers: int = 1,
         # threads: int = 1,
-) -> Union[S3Location, List[S3Location]]:
+) -> S3Location | list[S3Location]:
     local_path = Path(local_path).resolve()
     location = as_s3_location(bucket_or_location, prefix)
 
@@ -446,11 +447,11 @@ def _download_object(location: S3Location, local_path: LocalPathLike) -> os.Path
 
 def download(
         bucket_or_location: S3LocationLike,
-        prefix: Union[str, LocalPathLike],
+        prefix: str | LocalPathLike,
         local_path: Optional[LocalPathLike] = None,
         recursive: bool = False,
         base_dir=None,
-) -> Union[str, List[str]]:
+) -> str | list[str]:
     if local_path is None:
         local_path = prefix
         prefix = None
@@ -538,7 +539,7 @@ def read(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, file_
 
 def write_to_s3(
         obj,
-        bucket_or_path: Union[str, S3Location],
+        bucket_or_path: str | S3Location,
         key: Optional[str] = None,
         local_temp_file=None,
         file_type: Optional[str] = None,
