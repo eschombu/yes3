@@ -519,7 +519,6 @@ def read(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, file_
     ext = Path(location.key).suffix
     if file_type is None and ext:
         file_type = ext.lstrip('.')
-
     if file_type is not None:
         file_type = file_type.lstrip('.').lower()
 
@@ -552,7 +551,7 @@ def write_to_s3(
 
     if file_type is None:
         file_type = os.path.splitext(s3_loc.key)[1].lstrip('.').lower()
-    if file_type is None:
+    if not file_type:
         file_type = 'pkl'
 
     print(f"Writing local temp {file_type} file: {local_temp_file}")
