@@ -1,3 +1,5 @@
+import gzip
+import io
 import json
 import os
 import pickle
@@ -533,6 +535,46 @@ def read(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, file_
         return body.read().decode()
     else:
         return body
+
+
+def write_to_s3(
+        obj,
+        bucket_or_path: Union[str, S3Location],
+        key: Optional[str] = None,
+        local_temp_file=None,
+        file_type: Optional[str] = None,
+        **kwargs
+) -> S3Location:
+    s3_loc = S3Location(bucket_or_path, key)
+
+    if not local_temp_file:
+        local_temp_file = f"TMPFILE.{datetime.now().strftime('%Y%m%dT%H%M%S.%f')}"
+
+    if file_type is None:
+        file_type = os.path.splitext(s3_loc.key)[1].lstrip('.').lower()
+    if file_type is None:
+        file_type = 'pkl'
+
+    print(f"Writing local temp {file_type} file: {local_temp_file}")
+    if file_type == 'json':
+        with open(local_temp_file, 'w') as f:
+            json.dump(obj, f, **kwargs)
+    elif file_type in ('pkl', 'pickle'):
+        with open(local_temp_file, 'wb') as f:
+            pickle.dump(obj, f, **kwargs)
+    elif file_type == 'parquet':
+        obj.to_parquet(local_temp_file, **kwargs)
+    elif file_type in ('gz', 'gzip'):
+        with open(local_temp_file, 'wb') as f:
+            pickle.dump(io.BytesIO(gzip.compress(obj)), f, **kwargs)
+    elif file_type == 'txt':
+        with open(local_temp_file, 'w') as f:
+            f.write(str(obj))
+
+    written_loc = upload(local_temp_file, s3_loc)
+    print(f'Deleting {local_temp_file}')
+    os.remove(local_temp_file)
+    return written_loc
 
 
 def touch(bucket_or_location: S3LocationLike, prefix: Optional[str] = None):
