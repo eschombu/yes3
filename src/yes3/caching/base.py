@@ -81,7 +81,6 @@ class CacheCatalog(metaclass=ABCMeta):
         pass
 
     def initialize(self) -> Self:
-        assert self.is_initialized()
         return self
 
     def is_initialized(self) -> bool:
@@ -130,12 +129,22 @@ class Cache(CacheCoreMethods, metaclass=ABCMeta):
     def create(cls, *args, **kwargs):
         pass
 
+    def _check_initialized(self):
+        if not self.is_initialized():
+            if hasattr(self._reader_writer, 'path'):
+                msg = f"{type(self)} at {self._reader_writer.path} not yet initialized"
+            else:
+                msg = f"{type(self)} not yet initialized"
+            raise CacheNotInitializedError(msg)
+
     def __contains__(self, key: str) -> bool:
+        self._check_initialized()
         if not self.is_active():
             return False
         return self._catalog.contains(key)
 
     def get(self, key: str, default=UNSPECIFIED):
+        self._check_initialized()
         if not self.is_active() or key not in self:
             if default is UNSPECIFIED:
                 raise_not_found(key)
@@ -144,6 +153,7 @@ class Cache(CacheCoreMethods, metaclass=ABCMeta):
         return self._reader_writer.read(key)
 
     def put(self, key: str, obj, *, update=False) -> Self:
+        self._check_initialized()
         if self.is_read_only():
             raise TypeError('Cache is in read only mode')
         if self.is_active():
@@ -153,7 +163,14 @@ class Cache(CacheCoreMethods, metaclass=ABCMeta):
             self._catalog.add(key, path)
         return self
 
+    def update(self, key: str, obj):
+        self._check_initialized()
+        if key not in self:
+            raise_not_found(key)
+        self.put(key, obj, update=True)
+
     def remove(self, key: str) -> Self:
+        self._check_initialized()
         if self.is_active() and key in self:
             if self.is_read_only():
                 raise TypeError('Cache is in read only mode')

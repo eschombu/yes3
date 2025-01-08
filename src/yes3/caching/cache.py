@@ -1,4 +1,3 @@
-import os
 from functools import cached_property
 from typing import Self
 
@@ -44,7 +43,7 @@ class S3ReaderWriter(CacheReaderWriter):
 
 class S3Cache(Cache):
     @staticmethod
-    def _build_catalog(reader_writer: S3ReaderWriter) -> CachePathDictCatalog:
+    def _build_catalog_dict(reader_writer: S3ReaderWriter) -> dict:
         catalog_dict = {}
         locations = s3.list_objects(reader_writer.path)
         for loc in locations:
@@ -52,7 +51,7 @@ class S3Cache(Cache):
             if key in catalog_dict:
                 raise KeyError(f"Key already in cache catalog: '{key}'")
             catalog_dict[key] = loc
-        return CachePathDictCatalog(catalog_dict)
+        return catalog_dict
 
     @classmethod
     def create(cls, path: str | S3Location, file_type=None, **kwargs):
@@ -60,7 +59,8 @@ class S3Cache(Cache):
         if file_type is not None:
             rw_kwargs['file_type'] = file_type
         reader_writer = S3ReaderWriter(path, **rw_kwargs)
-        catalog = cls._build_catalog(reader_writer)
+        catalog_dict = cls._build_catalog_dict(reader_writer)
+        catalog = CachePathDictCatalog(catalog_dict or None)
         return cls(catalog, reader_writer, **kwargs)
 
     @cached_property
@@ -72,7 +72,8 @@ class S3Cache(Cache):
 
     def initialize(self) -> Self:
         self._log(f"Initializing cache at {self.path.s3_uri}")
-        self._catalog = self._build_catalog(self._reader_writer)
+        catalog_dict = self._build_catalog_dict(self._reader_writer)
+        self._catalog = CachePathDictCatalog(catalog_dict)
         if len(self.keys()) > 0:
             self._log(f'{len(self.keys())} cached items discovered')
         return self
@@ -80,12 +81,12 @@ class S3Cache(Cache):
     def clear(self, force=False, initialize=False) -> 'S3Cache':
         if self.is_active() and self._catalog and self.path.exists():
             if not force:
-                self._log(f'WARNING: Deleting {len(self.keys())} items from this cache ({self.path.s3_uri}) requires '
-                          'specifying force=True. Skipping this step.')
+                raise RuntimeError(f'Clearing this cache ({self.path.s3_uri}) requires specifying force=True')
             else:
                 self._log(f'Deleting {len(self.keys())} from cache at {self.path.s3_uri}')
                 s3.delete(self.path, recursive=True)
-                self._catalog = self._build_catalog(self._reader_writer)
+                catalog_dict = self._build_catalog_dict(self._reader_writer)
+                self._catalog = CachePathDictCatalog(catalog_dict or None)
         if initialize:
             self.initialize()
         return self
