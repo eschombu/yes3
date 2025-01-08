@@ -515,6 +515,10 @@ def delete(
 
 def read(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, file_type: Optional[str] = None):
     location = as_s3_location(bucket_or_location, prefix)
+    if not location.exists():
+        raise FileNotFoundError(f'No object(s) present at {location.s3_uri}')
+    elif not location.is_object():
+        raise ValueError(f'{location.s3_uri} is not a uri for a single object, cannot use `read` method.')
     body = _client.get_object(Bucket=location.bucket, Key=location.key)['Body']
 
     ext = Path(location.key).suffix
