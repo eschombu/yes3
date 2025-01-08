@@ -7,20 +7,20 @@ from typing import List
 
 from moto import mock_aws
 
+this_dir = Path(__file__).resolve().parent
+repo_root = this_dir.parent
+
 try:
-    from . import get_arg_parser, run_tests
+    from tests import get_arg_parser, run_tests
 except ModuleNotFoundError:
-    this_dir = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, this_dir)
-    from . import get_arg_parser, run_tests
+    sys.path.insert(0, str(repo_root))
+    from tests import get_arg_parser, run_tests
 
 try:
     from yes3 import s3
 except ModuleNotFoundError:
-    parent_dir = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
-    sys.path.insert(0, parent_dir)
+    sys.path.insert(0, str(repo_root / 'src'))
     from yes3 import s3
-
 from yes3.s3 import S3Location
 
 TEST_LOCAL_DIR = Path('_tmp_test_dir_')
@@ -156,12 +156,12 @@ def _test_download():
     assert not os.path.exists(LOCAL_COPY_DIR)
 
 
-def _test_write():
-    pass
-
-
-def _test_read():
-    pass
+def _test_write_read():
+    contents = {'a': 42, 'b': list(range(10)), 'c': None}
+    s3_path = s3.S3Location(TEST_S3_DIR).join('test_write_file.pkl')
+    s3.write_to_s3(contents, s3_path)
+    read_contents = s3.read(s3_path)
+    assert contents == read_contents
 
 
 class TestS3Utils(unittest.TestCase):
@@ -213,8 +213,7 @@ class TestS3Utils(unittest.TestCase):
             _test_list_objects,
             _test_list_dir,
             _test_download,
-            # test_write,
-            # test_read,
+            _test_write_read,
         ]
         _vprint('Running tests...\n')
         try:
