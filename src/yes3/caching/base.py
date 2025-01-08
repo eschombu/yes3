@@ -20,12 +20,29 @@ class CacheCoreMethods(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def get(self, key):
+        pass
+
+    @abstractmethod
     def put(self, key, obj):
         pass
 
     @abstractmethod
-    def get(self, key):
+    def remove(self, key):
         pass
+
+    @abstractmethod
+    def update(self, key, obj):
+        pass
+
+    def __getitem__(self, key: str):
+        return self.get(key)
+
+    def __setitem__(self, key: str, obj) -> None:
+        self.put(key, obj)
+
+    def __delitem__(self, key: str) -> None:
+        self.remove(key)
 
 
 class CacheReaderWriter(metaclass=ABCMeta):
@@ -169,14 +186,6 @@ class Cache(CacheCoreMethods, metaclass=ABCMeta):
         self._read_only = value
         return self
 
-    def update(self, key: str, obj):
-        if key not in self:
-            raise_not_found(key)
-        self.put(key, obj, update=True)
-
-    def __getitem__(self, key: str):
-        return self.get(key)
-
     def keys(self) -> list[str]:
         if not self.is_active():
             return []
@@ -188,12 +197,6 @@ class Cache(CacheCoreMethods, metaclass=ABCMeta):
             return iter([])
         else:
             return self._catalog.items()
-
-    def __setitem__(self, key: str, obj) -> None:
-        self.put(key, obj)
-
-    def __delitem__(self, key: str) -> None:
-        self.remove(key)
 
     def pop(self, key: str, default=UNSPECIFIED):
         obj = self.get(key, default=default)
