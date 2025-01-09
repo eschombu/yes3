@@ -493,7 +493,7 @@ def download(
 def _delete_object(location: S3Location):
     _verbose_print(f'Deleting {location.s3_uri}... ', end='')
     _client.delete_object(Bucket=location.bucket, Key=location.key)
-    _verbose_print(f'DONE')
+    _verbose_print('DONE')
 
 
 def delete(

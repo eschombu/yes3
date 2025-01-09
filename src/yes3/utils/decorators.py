@@ -5,6 +5,7 @@ from inspect import signature
 
 def timeit_opt(func=None, *, default=False):
     assert func is None or callable(func), 'timeit_opt parameters must be passed as keyword arguments'
+
     def decorator(f):
         @wraps(f)
         def wrapper(*args, **kwargs):
@@ -18,6 +19,7 @@ def timeit_opt(func=None, *, default=False):
                 print(f'{f.__name__} elapsed time: {datetime.now() - start}')
             return result
         return wrapper
+
     if func is None:
         return decorator
     else:

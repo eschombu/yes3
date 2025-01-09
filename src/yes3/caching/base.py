@@ -1,10 +1,13 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, Iterator, Optional, Self
 
+
 class _UnspecifiedParamType:
     pass
 
+
 UNSPECIFIED = _UnspecifiedParamType()
+
 
 class CacheNotInitializedError(Exception):
     pass
