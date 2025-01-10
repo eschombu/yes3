@@ -1,31 +1,38 @@
 from typing import Iterator, Self
 
-from yes3.caching.base import Cache, CacheCore, raise_not_found, UNSPECIFIED
+from yes3.caching.base import CacheCore, raise_not_found, UNSPECIFIED
 
 
 class MultiCache(CacheCore):
-    def __init__(self, caches: list[Cache], left_to_right_priority=True, sync_all=False):
+    def __init__(self, caches: list[CacheCore], left_to_right_priority=True, sync_all=False, active=True,
+                 read_only=False):
+        super().__init__(active=active, read_only=read_only)
         if left_to_right_priority:
             self._caches = list(caches)
         else:
             self._caches = list(caches[::-1])
         self._sync_all = sync_all
 
-    def __iter__(self) -> Iterator[Cache]:
+    def __iter__(self) -> Iterator[CacheCore]:
         return iter(self._caches)
 
     def activate(self) -> Self:
+        super().activate()
         for cache in self:
             cache.activate()
         return self
 
     def deactivate(self) -> Self:
+        super().deactivate()
         for cache in self:
             cache.deactivate()
         return self
 
     def is_active(self) -> bool:
-        return any(cache.is_active() for cache in self)
+        return super().is_active() and any(cache.is_active() for cache in self)
+
+    def is_read_only(self) -> bool:
+        return super().is_read_only() or all(cache.is_read_only() for cache in self)
 
     def initialize(self, reinit=False) -> Self:
         for cache in self:
@@ -36,7 +43,7 @@ class MultiCache(CacheCore):
     def is_initialized(self) -> bool:
         return all(cache.is_initialized() for cache in self)
 
-    def add_cache(self, cache: Cache, index=-1) -> Self:
+    def add_cache(self, cache: CacheCore, index=-1) -> Self:
         if self.is_initialized() and not cache.is_initialized():
             cache.initialize()
         if index is not None and index >= 0:

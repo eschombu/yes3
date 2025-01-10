@@ -18,16 +18,20 @@ def raise_not_found(key) -> KeyError:
 
 
 class CacheCore(metaclass=ABCMeta):
+    def __init__(self, active=True, read_only=False):
+        self._read_only = read_only
+        self._active = active
+
     @abstractmethod
     def __contains__(self, key):
         pass
 
     @abstractmethod
-    def get(self, key):
+    def get(self, key, default=UNSPECIFIED):
         pass
 
     @abstractmethod
-    def put(self, key, obj):
+    def put(self, key, obj, update=False):
         pass
 
     @abstractmethod
@@ -38,6 +42,15 @@ class CacheCore(metaclass=ABCMeta):
     def update(self, key, obj):
         pass
 
+    @abstractmethod
+    def keys(self):
+        pass
+
+    def pop(self, key: str, default=UNSPECIFIED):
+        obj = self.get(key, default=default)
+        self.remove(key)
+        return obj
+
     def __getitem__(self, key: str):
         return self.get(key)
 
@@ -46,6 +59,30 @@ class CacheCore(metaclass=ABCMeta):
 
     def __delitem__(self, key: str) -> None:
         self.remove(key)
+
+    def is_active(self) -> bool:
+        return self._active and self.is_initialized()
+
+    def activate(self):
+        self._active = True
+        return self
+
+    def deactivate(self):
+        self._active = False
+        return self
+
+    def is_read_only(self) -> bool:
+        return self._read_only
+
+    def set_read_only(self, value: bool) -> Self:
+        self._read_only = value
+        return self
+
+    def initialize(self) -> Self:
+        return self
+
+    def is_initialized(self) -> bool:
+        return True
 
 
 class CacheReaderWriter(metaclass=ABCMeta):
@@ -121,11 +158,9 @@ class CachePathDictCatalog(CacheCatalog):
 
 class Cache(CacheCore, metaclass=ABCMeta):
     def __init__(self, catalog: CacheCatalog, reader_writer: CacheReaderWriter, active=True, read_only=False):
-        super().__init__()
+        super().__init__(active=active, read_only=read_only)
         self._catalog = catalog
         self._reader_writer = reader_writer
-        self._read_only = read_only
-        self._active = active
 
     @classmethod
     @abstractmethod
@@ -188,24 +223,6 @@ class Cache(CacheCore, metaclass=ABCMeta):
     def is_initialized(self) -> bool:
         return self._catalog.is_initialized()
 
-    def is_active(self) -> bool:
-        return self._active and self.is_initialized()
-
-    def activate(self):
-        self._active = True
-        return self
-
-    def deactivate(self):
-        self._active = False
-        return self
-
-    def is_read_only(self) -> bool:
-        return self._read_only
-
-    def set_read_only(self, value: bool) -> Self:
-        self._read_only = value
-        return self
-
     def keys(self) -> list[str]:
         if not self.is_active():
             return []
@@ -217,11 +234,6 @@ class Cache(CacheCore, metaclass=ABCMeta):
             return iter([])
         else:
             return self._catalog.items()
-
-    def pop(self, key: str, default=UNSPECIFIED):
-        obj = self.get(key, default=default)
-        self.remove(key)
-        return obj
 
     def _repr_params(self) -> list[str]:
         params = []

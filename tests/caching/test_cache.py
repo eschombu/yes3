@@ -17,10 +17,10 @@ except ModuleNotFoundError:
     from tests import get_arg_parser, run_tests
 
 try:
-    from yes3.caching import Cache, CacheCore, CacheNotInitializedError, LocalDiskCache, MultiCache, S3Cache
+    from yes3.caching import CacheCore, CacheNotInitializedError, LocalDiskCache, MultiCache, S3Cache
 except ModuleNotFoundError:
     sys.path.insert(0, str(repo_root / 'src'))
-    from yes3.caching import Cache, CacheCore, CacheNotInitializedError, LocalDiskCache, MultiCache, S3Cache
+    from yes3.caching import CacheCore, CacheNotInitializedError, LocalDiskCache, MultiCache, S3Cache
 from yes3 import s3
 
 TEST_LOCAL_DIR = Path('_tmp_test_dir_')
@@ -65,7 +65,7 @@ class TestLocalDiskCache(unittest.TestCase):
             path = s3_loc if isinstance(cache.path, S3Location) else local_path
             self.assertIs(path.exists(), expect_exists)
 
-    def _test_cache_state(self, cache: Cache | MultiCache):
+    def _test_cache_state(self, cache: CacheCore):
         # Test cache state (active & initialized)
         self.assertFalse(cache.is_active())
         self.assertFalse(cache.is_initialized())
@@ -74,7 +74,7 @@ class TestLocalDiskCache(unittest.TestCase):
         cache.activate()
         self.assertTrue(cache.is_active())
 
-    def _test_missing_data(self, cache: Cache | MultiCache):
+    def _test_missing_data(self, cache: CacheCore):
         # Test checking and getting data that is not present
         self.assertFalse(key in cache)
         self._check_path_exists(cache, False)
@@ -85,7 +85,7 @@ class TestLocalDiskCache(unittest.TestCase):
         retrieved = cache.get(key, default=None)
         self.assertIsNone(retrieved)
 
-    def _test_adding_data(self, cache: Cache | MultiCache):
+    def _test_adding_data(self, cache: CacheCore):
         # Test adding and retrieving data
         cache.put(key, data)
         self.assertTrue(key in cache)
@@ -97,7 +97,7 @@ class TestLocalDiskCache(unittest.TestCase):
         retrieved = cache[key]
         self.assertEqual(retrieved, data)
 
-    def _test_updating_data(self, cache: Cache | MultiCache):
+    def _test_updating_data(self, cache: CacheCore):
         # Test updating data for existing key
         with self.assertRaises(ValueError):
             cache.put(key, updated_data)
@@ -111,7 +111,7 @@ class TestLocalDiskCache(unittest.TestCase):
         self.assertEqual(retrieved, data)
         self.assertNotEqual(retrieved, updated_data)
 
-    def _test_removing_data(self, cache: Cache | MultiCache):
+    def _test_removing_data(self, cache: CacheCore):
         # Test removing data
         cache.remove(key)
         self.assertFalse(key in cache)
@@ -126,7 +126,7 @@ class TestLocalDiskCache(unittest.TestCase):
         self._check_path_exists(cache, False)
         self.assertEqual(retrieved, data)
 
-    def _test_initializing_local_cache_with_data(self, cache: Cache):
+    def _test_initializing_local_cache_with_data(self, cache: LocalDiskCache):
         # Test initializing cache when there is existing data in its location
         cache.put(key, data)
         new_cache = LocalDiskCache.create(TEST_LOCAL_DIR).initialize()
