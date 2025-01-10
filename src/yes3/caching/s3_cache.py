@@ -1,9 +1,22 @@
+import os
 from functools import cached_property
-from typing import Self
+from typing import Optional, Self
 
 from yes3 import s3
 from yes3.caching.base import Cache, CachePathDictCatalog, CacheReaderWriter
 from yes3.s3 import S3Location
+
+
+def _with_ext(path: S3Location, ext: Optional[str]) -> S3Location:
+    if ext is None:
+        return path
+    if not ext.startswith('.'):
+        ext = f'.{ext}'
+    key = path.key
+    if key.endswith(ext):
+        return path
+    else:
+        return type(path)(path.bucket, key + ext, path.region)
 
 
 class S3ReaderWriter(CacheReaderWriter):
@@ -12,12 +25,16 @@ class S3ReaderWriter(CacheReaderWriter):
         self._file_type = file_type
 
     def key2path(self, key: str) -> S3Location:
-        return self.path.join(key)
+        return _with_ext(self.path.join(key), self._file_type)
 
     def path2key(self, path: str | S3Location) -> str:
         path = S3Location(path)
-        key = path.s3_uri.split(self.path.s3_uri, maxsplit=1)[-1].lstrip('/')
-        # key, ext = os.path.splitext(rel_path)
+        filename = path.s3_uri.split(self.path.s3_uri, maxsplit=1)[-1].lstrip('/')
+        base, ext = os.path.splitext(filename)
+        if ext.endswith(self._file_type):
+            key = base
+        else:
+            key = filename
         return key
 
     def read(self, key: str, file_type=None):
