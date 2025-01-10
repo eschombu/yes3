@@ -513,7 +513,7 @@ def delete(
         _delete_object(location)
 
 
-def read(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, file_type: Optional[str] = None):
+def read(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, file_type: Optional[str] = None, **kwargs):
     location = as_s3_location(bucket_or_location, prefix)
     if not location.exists():
         raise FileNotFoundError(f'No object(s) present at {location.s3_uri}')
@@ -528,13 +528,15 @@ def read(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, file_
         file_type = file_type.lstrip('.').lower()
 
     if file_type == 'pkl':
-        return pickle.load(body)
+        return pickle.load(body, **kwargs)
     elif file_type == 'json':
-        return json.load(body)
+        return json.load(body, **kwargs)
+    elif file_type == 'csv':
+        return pd.read_csv(body, **kwargs)
     elif file_type == 'npy':
-        return np.load(body)
+        return np.load(body, **kwargs)
     elif file_type == 'parquet':
-        return pd.read_parquet(body)
+        return pd.read_parquet(body, **kwargs)
     elif file_type in ('txt', 'text'):
         return body.read().decode()
     else:

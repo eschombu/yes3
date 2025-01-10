@@ -17,10 +17,10 @@ except ModuleNotFoundError:
     from tests import get_arg_parser, run_tests
 
 try:
-    from yes3.caching import Cache, CacheCoreMethods, CacheNotInitializedError, LocalDiskCache, MultiCache, S3Cache
+    from yes3.caching import Cache, CacheCore, CacheNotInitializedError, LocalDiskCache, MultiCache, S3Cache
 except ModuleNotFoundError:
     sys.path.insert(0, str(repo_root / 'src'))
-    from yes3.caching import Cache, CacheCoreMethods, CacheNotInitializedError, LocalDiskCache, MultiCache, S3Cache
+    from yes3.caching import Cache, CacheCore, CacheNotInitializedError, LocalDiskCache, MultiCache, S3Cache
 from yes3 import s3
 
 TEST_LOCAL_DIR = Path('_tmp_test_dir_')
