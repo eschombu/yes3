@@ -1,7 +1,7 @@
 import os
 import pickle
 import shutil
-from functools import cached_property
+from functools import partial
 from pathlib import Path
 from typing import Optional, Self
 
@@ -61,21 +61,19 @@ class LocalReaderWriter(CacheReaderWriter):
 
     def read(self, key: str):
         path = self.key2path(key)
-        self._log(f"Reading cached item '{key}' at {path}")
+        print(f"Reading cached item '{key}' at {path}")
         return self._serializer.read(path)
 
-    def write(self, key: str, obj):
+    def write(self, key: str, obj) -> Path:
         path = self.key2path(key)
-        self._log(f"Caching item '{key}' at {path}")
+        print(f"Caching item '{key}' at {path}")
         self._serializer.write(path, obj)
+        return path
 
     def delete(self, key: str):
         path = self.key2path(key)
-        self._log(f"Deleting cached item '{key}' at {path}")
+        print(f"Deleting cached item '{key}' at {path}")
         os.remove(path)
-
-    def _log(self, *args, **kwargs):
-        print(*args, **kwargs)
 
 
 class LocalDiskCache(Cache):
@@ -89,30 +87,36 @@ class LocalDiskCache(Cache):
                 if key in catalog_dict:
                     raise KeyError(f"Key already in cache catalog: '{key}'")
                 catalog_dict[key] = fpath
+        if len(catalog_dict.keys()) > 0:
+            print(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path}')
         return catalog_dict
 
     @classmethod
-    def create(cls, path: str | Path, serializer: str | Serializer = 'pkl', **kwargs):
+    def create(cls, path: str | Path, serializer: str | Serializer = 'pkl', initialize=True, **kwargs):
         reader_writer = LocalReaderWriter(path, serializer)
-        catalog_dict = cls._build_catalog_dict(reader_writer)
-        catalog = CachePathDictCatalog(catalog_dict or None)
-        return cls(catalog, reader_writer, **kwargs)
+        catalog_builder = partial(cls._build_catalog_dict, reader_writer=reader_writer)
+        catalog = CachePathDictCatalog(initialize=initialize, catalog_builder=catalog_builder)
+        return cls(catalog, reader_writer, initialize=initialize, **kwargs)
 
-    @cached_property
+    @property
     def path(self) -> Path:
         return self._reader_writer.path
 
-    def _log(self, *args, **kwargs):
-        print(*args, **kwargs)
+    def subcache(self, rel_path: str, initialize=None) -> Self:
+        path = self.path / rel_path
+        kwargs = dict(active=self.is_active(), read_only=self.is_read_only())
+        if initialize is not None:
+            kwargs['initialize'] = initialize
+        return type(self).create(path, self._reader_writer._serializer, **kwargs)
 
     def initialize(self) -> Self:
-        self._log(f"Initializing cache at {self.path}")
-        if not self.path.exists():
-            os.makedirs(self.path, exist_ok=True)
-        catalog_dict = self._build_catalog_dict(self._reader_writer)
-        self._catalog = CachePathDictCatalog(catalog_dict)
-        if len(self.keys()) > 0:
-            self._log(f'{len(self.keys())} cached items discovered')
+        if not self.is_initialized():
+            print(f"Initializing cache at {self.path}")
+            if not self.path.exists():
+                os.makedirs(self.path, exist_ok=True)
+            self._catalog.initialize()
+        else:
+            print(f"Cache initialized at {self.path}")
         return self
 
     def is_initialized(self) -> bool:
@@ -122,13 +126,11 @@ class LocalDiskCache(Cache):
         if self.is_active() and self._catalog and self.path.exists():
             if not force:
                 raise RuntimeError(f'Clearing this cache ({self.path}) requires specifying force=True')
-            else:
-                self._log(f'Deleting {len(self.keys())} from cache at {self.path}')
-                shutil.rmtree(self.path)
-                catalog_dict = self._build_catalog_dict(self._reader_writer)
-                self._catalog = CachePathDictCatalog(catalog_dict or None)
-        if initialize:
-            self.initialize()
+            print(f'Deleting {len(self.keys())} item(s) from cache at {self.path}')
+            shutil.rmtree(self.path)
+            new_cache = type(self).create(self.path, self._reader_writer._serializer, initialize=initialize)
+            self.__init__(new_cache._catalog, new_cache._reader_writer, active=self._active, initialize=initialize,
+                          read_only=self._read_only)
         return self
 
     def _repr_params(self) -> list[str]:

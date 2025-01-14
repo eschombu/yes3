@@ -5,13 +5,15 @@ from yes3.caching.base import CacheCore, raise_not_found, UNSPECIFIED
 
 class MultiCache(CacheCore):
     def __init__(self, caches: list[CacheCore], left_to_right_priority=True, sync_all=False, active=True,
-                 read_only=False):
-        super().__init__(active=active, read_only=read_only)
+                 initialize=True, read_only=False):
+        super().__init__(active=active, initialize=False, read_only=read_only)
         if left_to_right_priority:
             self._caches = list(caches)
         else:
             self._caches = list(caches[::-1])
         self._sync_all = sync_all
+        if initialize:
+            self.initialize()
 
     def __iter__(self) -> Iterator[CacheCore]:
         return iter(self._caches)
@@ -52,13 +54,20 @@ class MultiCache(CacheCore):
             self._caches.append(cache)
         return self
 
+    def subcache(self, *args, initialize=True, **kwargs) -> Self:
+        subcaches = [cache.subcache(*args, **kwargs) for cache in self]
+        return type(self)(subcaches, sync_all=self._sync_all, active=self.is_active(), initialize=initialize,
+                          read_only=self.is_read_only())
+
     def __contains__(self, key: str):
         for cache in self:
             if key in cache:
                 return True
         return False
 
-    def get(self, key: str, default=UNSPECIFIED):
+    def get(self, key: str, default=UNSPECIFIED, sync=None):
+        if sync is None:
+            sync = self._sync_all
         result = UNSPECIFIED
         for cache in self:
             if key in cache:
@@ -69,7 +78,7 @@ class MultiCache(CacheCore):
                 raise_not_found(key)
             else:
                 result = default
-        elif self._sync_all:
+        elif sync:
             for cache in self:
                 if cache.is_read_only():
                     continue
@@ -114,9 +123,11 @@ class MultiCache(CacheCore):
 
     def sync_now(self) -> Self:
         for key in self.keys():
-            obj = self[key]
+            obj = None
             for cache in self:
                 if key not in cache:
+                    if obj is None:
+                        obj = self.get(key, sync=False)
                     cache.put(key, obj)
         return self
 

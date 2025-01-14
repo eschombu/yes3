@@ -1,4 +1,5 @@
 from abc import ABCMeta, abstractmethod
+from collections.abc import Callable
 from typing import Any, Iterator, Optional, Self
 
 
@@ -18,9 +19,11 @@ def raise_not_found(key) -> KeyError:
 
 
 class CacheCore(metaclass=ABCMeta):
-    def __init__(self, active=True, read_only=False):
+    def __init__(self, active=True, initialize=True, read_only=False):
         self._read_only = read_only
         self._active = active
+        if initialize:
+            self.initialize()
 
     @abstractmethod
     def __contains__(self, key):
@@ -84,6 +87,9 @@ class CacheCore(metaclass=ABCMeta):
     def is_initialized(self) -> bool:
         return True
 
+    def subcache(self, *args, **kwargs) -> Self:
+        raise NotImplementedError(f"`subcache` method is not defined for class {type(self).__name__}")
+
 
 class CacheReaderWriter(metaclass=ABCMeta):
     @abstractmethod
@@ -127,14 +133,28 @@ class CacheCatalog(metaclass=ABCMeta):
         return True
 
 
+CatalogBuilderT = Callable[[], dict]
+
+
 class CachePathDictCatalog(CacheCatalog):
-    def __init__(self, catalog: Optional[dict[str, Any]] = None):
+    def __init__(
+            self,
+            catalog: Optional[dict[str, Any]] = None,
+            initialize=True,
+            catalog_builder: Optional[CatalogBuilderT] = None,
+    ):
         self._catalog = catalog
+        if catalog_builder is None:
+            catalog_builder = lambda: dict()
+        self._build_catalog = catalog_builder
+        if initialize:
+            self.initialize()
 
     def initialize(self, catalog: Optional[dict[str, Any]] = None) -> Self:
-        if catalog is None:
-            catalog: dict[str, Any] = {}
-        self._catalog = catalog
+        if catalog is not None:
+            self._catalog = catalog
+        elif self._catalog is None:
+            self._catalog = self._build_catalog().copy()
         return self
 
     def is_initialized(self) -> bool:
@@ -147,7 +167,7 @@ class CachePathDictCatalog(CacheCatalog):
         self._catalog[key] = value
 
     def remove(self, key: str):
-        del self._catalog[key]
+        self._catalog.pop(key)
 
     def keys(self):
         return list(self._catalog.keys())
@@ -157,10 +177,13 @@ class CachePathDictCatalog(CacheCatalog):
 
 
 class Cache(CacheCore, metaclass=ABCMeta):
-    def __init__(self, catalog: CacheCatalog, reader_writer: CacheReaderWriter, active=True, read_only=False):
-        super().__init__(active=active, read_only=read_only)
+    def __init__(self, catalog: CacheCatalog, reader_writer: CacheReaderWriter, active=True, initialize=True,
+                 read_only=False):
+        super().__init__(active=active, initialize=False, read_only=read_only)
         self._catalog = catalog
         self._reader_writer = reader_writer
+        if initialize:
+            self.initialize()
 
     @classmethod
     @abstractmethod

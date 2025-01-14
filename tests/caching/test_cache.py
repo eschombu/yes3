@@ -129,7 +129,7 @@ class TestLocalDiskCache(unittest.TestCase):
     def _test_initializing_local_cache_with_data(self, cache: LocalDiskCache):
         # Test initializing cache when there is existing data in its location
         cache.put(key, data)
-        new_cache = LocalDiskCache.create(TEST_LOCAL_DIR).initialize()
+        new_cache = LocalDiskCache.create(TEST_LOCAL_DIR, initialize=True)
         self.assertTrue(key in new_cache)
         retrieved = new_cache.get(key)
         self.assertEqual(retrieved, data)
@@ -139,7 +139,7 @@ class TestLocalDiskCache(unittest.TestCase):
         path = local_path
         if key not in cache:
             cache.put(key, data)
-        second_cache = LocalDiskCache.create(cache.path).initialize()
+        second_cache = LocalDiskCache.create(cache.path, initialize=True)
         self.assertTrue(key in second_cache)
         with self.assertRaises(RuntimeError):
             cache.clear()
@@ -165,13 +165,13 @@ class TestLocalDiskCache(unittest.TestCase):
         self._test_clearing_local_cache(cache)
 
     def test_local_cache(self):
-        cache = LocalDiskCache.create(TEST_LOCAL_DIR, active=False)
+        cache = LocalDiskCache.create(TEST_LOCAL_DIR, active=False, initialize=False)
         self._run_local_tests(cache)
 
     def _test_initializing_s3_cache_with_data(self, cache: S3Cache):
         # Test initializing cache when there is existing data in its location
         cache.put(key, data)
-        new_cache = S3Cache.create(TEST_S3_DIR).initialize()
+        new_cache = S3Cache.create(TEST_S3_DIR, initialize=True)
         self.assertTrue(key in new_cache)
         retrieved = new_cache.get(key)
         self.assertEqual(retrieved, data)
@@ -181,7 +181,7 @@ class TestLocalDiskCache(unittest.TestCase):
         # Test clearing cache
         if key not in cache:
             cache.put(key, data)
-        second_cache = S3Cache.create(cache.path).initialize()
+        second_cache = S3Cache.create(cache.path, initialize=True)
         self.assertTrue(key in second_cache)
         with self.assertRaises(RuntimeError):
             cache.clear()
@@ -210,7 +210,7 @@ class TestLocalDiskCache(unittest.TestCase):
     def test_s3_cache(self):
         # moto (aws mock) requires the bucket be created before use
         s3._client.create_bucket(Bucket=TEST_BUCKET)
-        cache = S3Cache.create(TEST_S3_DIR, active=False)
+        cache = S3Cache.create(TEST_S3_DIR, active=False, initialize=False)
         self._run_s3_tests(cache)
 
     def _run_multi_tests(self, cache: MultiCache):
@@ -224,9 +224,9 @@ class TestLocalDiskCache(unittest.TestCase):
     def test_multi_cache(self):
         # moto (aws mock) requires the bucket be created before use
         s3._client.create_bucket(Bucket=TEST_BUCKET)
-        local_cache = LocalDiskCache.create(TEST_LOCAL_DIR, active=False)
-        s3_cache = S3Cache.create(TEST_S3_DIR, active=False)
-        multi_cache = MultiCache([local_cache, s3_cache], sync_all=True)
+        local_cache = LocalDiskCache.create(TEST_LOCAL_DIR, active=False, initialize=False)
+        s3_cache = S3Cache.create(TEST_S3_DIR, active=False, initialize=False)
+        multi_cache = MultiCache([local_cache, s3_cache], sync_all=True, initialize=False)
         self._run_multi_tests(multi_cache)
 
 
