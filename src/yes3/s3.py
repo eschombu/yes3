@@ -48,7 +48,7 @@ def is_s3_url(s: str) -> bool:
 
 
 class S3Location:
-    def __init__(self, bucket: str, key: Optional[str] = None, region: Optional[str] = None):
+    def __init__(self, bucket: str | Self, key: Optional[str] = None, region: Optional[str] = None):
         if isinstance(bucket, S3Location):
             loc = bucket
             if key:
@@ -112,6 +112,10 @@ class S3Location:
 
     def join(self, *parts) -> Self:
         key_parts = self.key.split('/')
+        if len(parts) == 1 and isinstance(parts[0], S3Location):
+            parts = parts[0].key.split('/')
+        elif len(parts) > 1 and not all(isinstance(p, str) for p in parts):
+            raise TypeError('If multiple arguments passed to `join`, they must all be strings.')
         for part in parts:
             key_parts += str(part).split('/')
         new_key = '/'.join(key_parts)
@@ -159,6 +163,9 @@ class S3Location:
         if not parent_key:
             parent_key = None
         return type(self)(self.bucket, parent_key, self.region)
+
+    def __truediv__(self, other):
+        return self.join(other)
 
 
 S3LocationLike = str | S3Location

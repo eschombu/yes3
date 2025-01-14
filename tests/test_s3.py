@@ -192,6 +192,7 @@ class TestS3Utils(unittest.TestCase):
         self.assertEqual(name, 'test_file.ext')
 
         self.assertEqual(loc.parent.join(name), loc)
+        self.assertEqual(loc.parent / name, loc)
 
         loc = S3Location('test-bucket', 'test-folder1/', 'us-region-1').join('test_folder2', '', '')
         self.assertEqual(
