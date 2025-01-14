@@ -1,5 +1,6 @@
 import argparse
 import pdb
+import sys
 import traceback
 import unittest
 from typing import Type, Union
@@ -27,6 +28,8 @@ def run_tests(args, test_case: Union[unittest.TestCase, Type[unittest.TestCase]]
                 print(f"TESTING: {test}()... ", end='')
                 getattr(test_case, test)()
                 print("PASSED")
+        except (KeyboardInterrupt, pdb.bdb.BdbQuit):
+            sys.exit(1)
         except Exception:
             print("FAILED")
             traceback.print_exc()
