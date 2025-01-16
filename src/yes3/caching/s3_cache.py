@@ -55,9 +55,6 @@ class S3ReaderWriter(CacheReaderWriter):
         print(f"Deleting cached item '{key}' at {path.s3_uri}")
         s3.delete(path)
 
-    def _log(self, *args, **kwargs):
-        print(*args, **kwargs)
-
 
 class S3Cache(Cache):
     @staticmethod
@@ -74,46 +71,32 @@ class S3Cache(Cache):
         return catalog_dict
 
     @classmethod
-    def create(cls, path: str | S3Location, file_type=None, initialize=True, **kwargs):
+    def create(cls, path: str | S3Location, file_type=None, **kwargs):
         rw_kwargs = {}
         if file_type is not None:
             rw_kwargs['file_type'] = file_type
         reader_writer = S3ReaderWriter(path, **rw_kwargs)
         catalog_builder = partial(cls._build_catalog_dict, reader_writer)
-        catalog = CachePathDictCatalog(initialize=initialize, catalog_builder=catalog_builder)
-        return cls(catalog, reader_writer, initialize=initialize, **kwargs)
+        catalog = CachePathDictCatalog(catalog_builder=catalog_builder)
+        return cls(catalog, reader_writer, **kwargs)
 
     @property
     def path(self) -> S3Location:
         return self._reader_writer.path
 
-    def subcache(self, rel_path: str, initialize=None) -> Self:
+    def subcache(self, rel_path: str) -> Self:
         path = self.path / rel_path
         kwargs = dict(active=self.is_active(), read_only=self.is_read_only())
-        if initialize is not None:
-            kwargs['initialize'] = initialize
         return self.create(path, file_type=self._reader_writer._file_type, **kwargs)
 
-    def _log(self, *args, **kwargs):
-        print(*args, **kwargs)
-
-    def initialize(self) -> Self:
-        if not self.is_initialized():
-            print(f"Initializing cache at {self.path.s3_uri}")
-            self._catalog.initialize()
-        else:
-            print(f"Cache initialized at {self.path.s3_uri}")
-        return self
-
-    def clear(self, force=False, initialize=False) -> 'S3Cache':
+    def clear(self, force=False) -> 'S3Cache':
         if self.is_active() and self._catalog and self.path.exists():
             if not force:
                 raise RuntimeError(f'Clearing this cache ({self.path.s3_uri}) requires specifying force=True')
             print(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
             s3.delete(self.path, recursive=True)
-            new_cache = type(self).create(self.path, self._reader_writer._file_type, initialize=initialize)
-            self.__init__(new_cache._catalog, new_cache._reader_writer, active=self._active, initialize=initialize,
-                          read_only=self._read_only)
+            new_cache = type(self).create(self.path, self._reader_writer._file_type)
+            self.__init__(new_cache._catalog, new_cache._reader_writer, active=self._active, read_only=self._read_only)
         return self
 
     def _repr_params(self) -> list[str]:

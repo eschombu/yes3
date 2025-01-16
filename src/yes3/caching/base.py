@@ -10,20 +10,14 @@ class _UnspecifiedParamType:
 UNSPECIFIED = _UnspecifiedParamType()
 
 
-class CacheNotInitializedError(Exception):
-    pass
-
-
 def raise_not_found(key) -> KeyError:
     raise KeyError(f"key '{key}' not found in cache")
 
 
 class CacheCore(metaclass=ABCMeta):
-    def __init__(self, active=True, initialize=True, read_only=False):
+    def __init__(self, active=True, read_only=False):
         self._read_only = read_only
         self._active = active
-        if initialize:
-            self.initialize()
 
     @abstractmethod
     def __contains__(self, key):
@@ -64,7 +58,7 @@ class CacheCore(metaclass=ABCMeta):
         self.remove(key)
 
     def is_active(self) -> bool:
-        return self._active and self.is_initialized()
+        return self._active
 
     def activate(self):
         self._active = True
@@ -80,12 +74,6 @@ class CacheCore(metaclass=ABCMeta):
     def set_read_only(self, value: bool) -> Self:
         self._read_only = value
         return self
-
-    def initialize(self) -> Self:
-        return self
-
-    def is_initialized(self) -> bool:
-        return True
 
     def subcache(self, *args, **kwargs) -> Self:
         raise NotImplementedError(f"`subcache` method is not defined for class {type(self).__name__}")
@@ -126,12 +114,6 @@ class CacheCatalog(metaclass=ABCMeta):
     def items(self):
         pass
 
-    def initialize(self) -> Self:
-        return self
-
-    def is_initialized(self) -> bool:
-        return True
-
 
 CatalogBuilderT = Callable[[], dict]
 
@@ -140,25 +122,17 @@ class CachePathDictCatalog(CacheCatalog):
     def __init__(
             self,
             catalog: Optional[dict[str, Any]] = None,
-            initialize=True,
             catalog_builder: Optional[CatalogBuilderT] = None,
     ):
         self._catalog = catalog
         if catalog_builder is None:
             catalog_builder = lambda: dict()
         self._build_catalog = catalog_builder
-        if initialize:
-            self.initialize()
+        if self._catalog is None:
+            self.rebuild()
 
-    def initialize(self, catalog: Optional[dict[str, Any]] = None) -> Self:
-        if catalog is not None:
-            self._catalog = catalog
-        elif self._catalog is None:
-            self._catalog = self._build_catalog().copy()
-        return self
-
-    def is_initialized(self) -> bool:
-        return self._catalog is not None
+    def rebuild(self):
+        self._catalog = self._build_catalog().copy()
 
     def contains(self, key: str):
         return key in self._catalog
@@ -177,35 +151,22 @@ class CachePathDictCatalog(CacheCatalog):
 
 
 class Cache(CacheCore, metaclass=ABCMeta):
-    def __init__(self, catalog: CacheCatalog, reader_writer: CacheReaderWriter, active=True, initialize=True,
-                 read_only=False):
-        super().__init__(active=active, initialize=False, read_only=read_only)
+    def __init__(self, catalog: CacheCatalog, reader_writer: CacheReaderWriter, active=True, read_only=False):
+        super().__init__(active=active, read_only=read_only)
         self._catalog = catalog
         self._reader_writer = reader_writer
-        if initialize:
-            self.initialize()
 
     @classmethod
     @abstractmethod
     def create(cls, *args, **kwargs):
         pass
 
-    def _check_initialized(self):
-        if not self.is_initialized():
-            if hasattr(self._reader_writer, 'path'):
-                msg = f"{type(self)} at {self._reader_writer.path} not yet initialized"
-            else:
-                msg = f"{type(self)} not yet initialized"
-            raise CacheNotInitializedError(msg)
-
     def __contains__(self, key: str) -> bool:
-        self._check_initialized()
         if not self.is_active():
             return False
         return self._catalog.contains(key)
 
     def get(self, key: str, default=UNSPECIFIED):
-        self._check_initialized()
         if not self.is_active() or key not in self:
             if default is UNSPECIFIED:
                 raise_not_found(key)
@@ -214,7 +175,6 @@ class Cache(CacheCore, metaclass=ABCMeta):
         return self._reader_writer.read(key)
 
     def put(self, key: str, obj, *, update=False) -> Self:
-        self._check_initialized()
         if self.is_read_only():
             raise TypeError('Cache is in read only mode')
         if self.is_active():
@@ -225,26 +185,17 @@ class Cache(CacheCore, metaclass=ABCMeta):
         return self
 
     def update(self, key: str, obj):
-        self._check_initialized()
         if key not in self:
             raise_not_found(key)
         self.put(key, obj, update=True)
 
     def remove(self, key: str) -> Self:
-        self._check_initialized()
         if self.is_active() and key in self:
             if self.is_read_only():
                 raise TypeError('Cache is in read only mode')
             self._catalog.remove(key)
             self._reader_writer.delete(key)
         return self
-
-    def initialize(self) -> Self:
-        self._catalog.initialize()
-        return self
-
-    def is_initialized(self) -> bool:
-        return self._catalog.is_initialized()
 
     def keys(self) -> list[str]:
         if not self.is_active():
@@ -259,11 +210,7 @@ class Cache(CacheCore, metaclass=ABCMeta):
             return self._catalog.items()
 
     def _repr_params(self) -> list[str]:
-        params = []
-        if self.is_initialized():
-            params.append(f'{len(self.keys())} items')
-        else:
-            params.append('UNINITIALIZED')
+        params = [f'{len(self.keys())} items']
         if not self.is_active():
             params.append('NOT ACTIVE')
         if self.is_read_only():

@@ -5,15 +5,13 @@ from yes3.caching.base import CacheCore, raise_not_found, UNSPECIFIED
 
 class MultiCache(CacheCore):
     def __init__(self, caches: list[CacheCore], left_to_right_priority=True, sync_all=False, active=True,
-                 initialize=True, read_only=False):
-        super().__init__(active=active, initialize=False, read_only=read_only)
+                 read_only=False):
+        super().__init__(active=active, read_only=read_only)
         if left_to_right_priority:
             self._caches = list(caches)
         else:
             self._caches = list(caches[::-1])
         self._sync_all = sync_all
-        if initialize:
-            self.initialize()
 
     def __iter__(self) -> Iterator[CacheCore]:
         return iter(self._caches)
@@ -36,28 +34,16 @@ class MultiCache(CacheCore):
     def is_read_only(self) -> bool:
         return super().is_read_only() or all(cache.is_read_only() for cache in self)
 
-    def initialize(self, reinit=False) -> Self:
-        for cache in self:
-            if not cache.is_initialized() or reinit:
-                cache.initialize()
-        return self
-
-    def is_initialized(self) -> bool:
-        return all(cache.is_initialized() for cache in self)
-
     def add_cache(self, cache: CacheCore, index=-1) -> Self:
-        if self.is_initialized() and not cache.is_initialized():
-            cache.initialize()
         if index is not None and index >= 0:
             self._caches.insert(index, cache)
         else:
             self._caches.append(cache)
         return self
 
-    def subcache(self, *args, initialize=True, **kwargs) -> Self:
+    def subcache(self, *args, **kwargs) -> Self:
         subcaches = [cache.subcache(*args, **kwargs) for cache in self]
-        return type(self)(subcaches, sync_all=self._sync_all, active=self.is_active(), initialize=initialize,
-                          read_only=self.is_read_only())
+        return type(self)(subcaches, sync_all=self._sync_all, active=self.is_active(), read_only=self.is_read_only())
 
     def __contains__(self, key: str):
         for cache in self:
