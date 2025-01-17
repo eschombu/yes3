@@ -1,6 +1,7 @@
-from typing import Iterator, Self
+from collections import defaultdict
+from typing import Iterator, Optional, Self
 
-from yes3.caching.base import CacheCore, raise_not_found, UNSPECIFIED
+from yes3.caching.base import CacheCore, CachedItemMeta, raise_not_found, UNSPECIFIED
 
 
 class MultiCache(CacheCore):
@@ -72,12 +73,53 @@ class MultiCache(CacheCore):
                     cache.put(key, result)
         return result
 
-    def put(self, key: str, obj, *, update=False) -> Self:
+    def get_meta(self, key) -> CachedItemMeta:
+        meta = None
+        for cache in self:
+            if key in cache:
+                c_meta = cache.get_meta(key)
+                if meta is None:
+                    meta = c_meta
+                elif meta != c_meta:
+                    print(f"WARNING: meta data mismatch in caches for '{key}'")
+        if meta is None:
+            raise_not_found(key)
+        return meta
+
+    def check_meta_mismatches(self, key=None) -> dict[str, tuple[CachedItemMeta, ...]]:
+        mismatches = {}
+        if key is None:
+            keys = self.keys()
+        else:
+            keys = [key]
+        for key in keys:
+            metas = [cache.get_meta(key) for cache in self if key in cache]
+            if len(metas) > 1:
+                first_meta = metas[0]
+                if any(meta != first_meta for meta in metas[1:]):
+                    mismatches[key] = tuple(metas)
+        return mismatches
+
+    def get_all_metadata(self) -> dict[str, dict[str, dict]]:
+        metadata = defaultdict(dict)
+        for key in self.keys():
+            for i, cache in enumerate(self):
+                cache_key = f'Cache {i + 1}'
+                if hasattr(cache, 'path'):
+                    cache_key += f' ({cache.path})'
+                metadata[key][cache_key] = cache.get_meta(key).to_dict() if key in cache else None
+        return dict(metadata)
+
+    def put(self, key: str, obj, *, update=False, meta: Optional[CachedItemMeta] = None) -> Self:
         for cache in self:
             if cache.is_read_only():
                 continue
-            cache.put(key, obj, update=update)
-            if not self._sync_all:
+            cache.put(key, obj, update=update, meta=meta)
+            meta = cache.get_meta(key)
+            mismatch = self.check_meta_mismatches(key)
+            if mismatch and not update:
+                print(f"WARNING: Metadata mismatch for '{key}'. Use update=True to sync across caches.")
+            if not self._sync_all and not mismatch:
                 break
         return self
 
@@ -110,11 +152,17 @@ class MultiCache(CacheCore):
     def sync_now(self) -> Self:
         for key in self.keys():
             obj = None
+            meta = None
             for cache in self:
                 if key not in cache:
                     if obj is None:
                         obj = self.get(key, sync=False)
-                    cache.put(key, obj)
+                        meta = self.get_meta(key)
+                    cache.put(key, obj, meta=meta)
+                else:
+                    mismatch = self.check_meta_mismatches(key)
+                    if mismatch:
+                        raise RuntimeError(f"Metadata mismatch for '{key}'")
         return self
 
     def sync_always(self):

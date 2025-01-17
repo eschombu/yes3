@@ -1,9 +1,12 @@
 import os
-from functools import cached_property, partial
+import sys
+from datetime import datetime, UTC
+from functools import partial
+from pathlib import Path
 from typing import Optional, Self
 
 from yes3 import s3
-from yes3.caching.base import Cache, CachePathDictCatalog, CacheReaderWriter
+from yes3.caching.base import Cache, CacheDictCatalog, CachedItemMeta, CacheReaderWriter
 from yes3.s3 import S3Location
 
 
@@ -20,21 +23,28 @@ def _with_ext(path: S3Location, ext: Optional[str]) -> S3Location:
 
 
 class S3ReaderWriter(CacheReaderWriter):
-    def __init__(self, path: str | S3Location, file_type: str = 'pkl'):
+    def __init__(
+            self,
+            path: str | S3Location,
+            file_type: str = 'pkl',
+            meta_file_type: str = 'json',
+            meta_ext: str = 'meta',
+    ):
         self.path = S3Location(path)
         self._file_type = file_type
+        self._meta_file_type = meta_file_type
+        self._meta_ext = meta_ext
 
-    def key2path(self, key: str) -> S3Location:
-        return _with_ext(self.path.join(key), self._file_type)
+    def key2path(self, key: str, meta=False) -> S3Location:
+        if meta:
+            return _with_ext(self.path.join(key), self._meta_ext)
+        else:
+            return _with_ext(self.path.join(key), self._file_type)
 
     def path2key(self, path: str | S3Location) -> str:
         path = S3Location(path)
         filename = path.s3_uri.split(self.path.s3_uri, maxsplit=1)[-1].lstrip('/')
-        base, ext = os.path.splitext(filename)
-        if ext.endswith(self._file_type):
-            key = base
-        else:
-            key = filename
+        key, ext = os.path.splitext(filename)
         return key
 
     def read(self, key: str, file_type=None):
@@ -43,17 +53,35 @@ class S3ReaderWriter(CacheReaderWriter):
         print(f"Reading cached item '{key}' at {path.s3_uri}")
         return s3.read(path, file_type=file_type)
 
-    def write(self, key: str, obj, file_type=None) -> S3Location:
+    def get_info(self, key: str) -> CachedItemMeta:
+        path = self.key2path(key, meta=True)
+        meta = s3.read(path, file_type=self._meta_file_type)
+        return CachedItemMeta(**meta)
+
+    def write(self, key: str, obj, meta: Optional[CachedItemMeta] = None, file_type=None) -> CachedItemMeta:
         file_type = file_type or self._file_type
         path = self.key2path(key)
         print(f"Caching item '{key}' at {path.s3_uri}")
         s3.write_to_s3(obj, path, file_type=file_type)
-        return path
+
+        meta_path = self.key2path(key, meta=True)
+        if meta is None:
+            rel_path = Path(path.key).relative_to(Path(self.path.key))
+            meta = CachedItemMeta(
+                key=key,
+                path=str(rel_path),
+                size=sys.getsizeof(obj, -1),
+                timestamp=datetime.now(UTC).timestamp(),
+            )
+        s3.write_to_s3(meta.to_dict(), meta_path, file_type=self._meta_file_type)
+        return meta
 
     def delete(self, key: str):
         path = self.key2path(key)
+        meta_path = self.key2path(key, meta=True)
         print(f"Deleting cached item '{key}' at {path.s3_uri}")
         s3.delete(path)
+        s3.delete(meta_path)
 
 
 class S3Cache(Cache):
@@ -61,23 +89,39 @@ class S3Cache(Cache):
     def _build_catalog_dict(reader_writer: S3ReaderWriter) -> dict:
         catalog_dict = {}
         locations = s3.list_objects(reader_writer.path)
-        for loc in locations:
-            key = reader_writer.path2key(loc)
-            if key in catalog_dict:
-                raise KeyError(f"Key already in cache catalog: '{key}'")
-            catalog_dict[key] = loc
+        meta_locs = [loc for loc in locations if loc.key.endswith(reader_writer._meta_ext)]
+        data_locs = [loc for loc in locations if loc not in meta_locs]
+        data_map = {reader_writer.path2key(loc): loc for loc in data_locs}
+        meta_map = {reader_writer.path2key(loc): loc for loc in meta_locs}
+        if data_map.keys() != meta_map.keys():
+            raise RuntimeError(f'data and metadata files are not aligned for a valid cache at {reader_writer.path}')
+        for key in meta_map.keys():
+            catalog_dict[key] = reader_writer.get_info(key)
         if len(catalog_dict.keys()) > 0:
             print(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path.s3_uri}')
         return catalog_dict
 
     @classmethod
-    def create(cls, path: str | S3Location, file_type=None, **kwargs):
-        rw_kwargs = {}
-        if file_type is not None:
-            rw_kwargs['file_type'] = file_type
-        reader_writer = S3ReaderWriter(path, **rw_kwargs)
+    def create(
+            cls,
+            path: str | S3Location,
+            file_type=None,
+            meta_file_type=None,
+            meta_ext=None,
+            reader_writer: Optional[CacheReaderWriter] = None,
+            **kwargs,
+    ):
+        if reader_writer is None:
+            rw_kwargs = {}
+            if file_type is not None:
+                rw_kwargs['file_type'] = file_type
+            if meta_file_type is not None:
+                rw_kwargs['meta_file_type'] = meta_file_type
+            if meta_ext is not None:
+                rw_kwargs['meta_ext'] = meta_ext
+            reader_writer = S3ReaderWriter(path, **rw_kwargs)
         catalog_builder = partial(cls._build_catalog_dict, reader_writer)
-        catalog = CachePathDictCatalog(catalog_builder=catalog_builder)
+        catalog = CacheDictCatalog(catalog_builder=catalog_builder)
         return cls(catalog, reader_writer, **kwargs)
 
     @property
@@ -87,15 +131,16 @@ class S3Cache(Cache):
     def subcache(self, rel_path: str) -> Self:
         path = self.path / rel_path
         kwargs = dict(active=self.is_active(), read_only=self.is_read_only())
-        return self.create(path, file_type=self._reader_writer._file_type, **kwargs)
+        return self.create(path, reader_writer=self._reader_writer, **kwargs)
 
-    def clear(self, force=False) -> 'S3Cache':
-        if self.is_active() and self._catalog and self.path.exists():
+    def clear(self, force=False) -> Self:
+        if self.is_active() and len(self.keys()) > 0:
             if not force:
                 raise RuntimeError(f'Clearing this cache ({self.path.s3_uri}) requires specifying force=True')
             print(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
-            s3.delete(self.path, recursive=True)
-            new_cache = type(self).create(self.path, self._reader_writer._file_type)
+            for key in self.keys():
+                self.remove(key)
+            new_cache = type(self).create(self.path, reader_writer=self._reader_writer)
             self.__init__(new_cache._catalog, new_cache._reader_writer, active=self._active, read_only=self._read_only)
         return self
 

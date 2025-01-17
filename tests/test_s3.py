@@ -1,27 +1,13 @@
 import os
 import shutil
-import sys
 import unittest
 from pathlib import Path
 from typing import List
 
 from moto import mock_aws
 
-this_dir = Path(__file__).resolve().parent
-repo_root = this_dir.parent
-
-try:
-    from tests import get_arg_parser, run_tests
-except ModuleNotFoundError:
-    sys.path.insert(0, str(repo_root))
-    from tests import get_arg_parser, run_tests
-
-try:
-    from yes3 import s3
-except ModuleNotFoundError:
-    sys.path.insert(0, str(repo_root / 'src'))
-    from yes3 import s3
-from yes3.s3 import S3Location
+from yes3 import s3, S3Location
+from yes3.utils.testing import get_arg_parser, run_tests
 
 TEST_LOCAL_DIR = Path('_tmp_test_dir_')
 LOCAL_COPY_DIR = str(TEST_LOCAL_DIR) + 'copy_/'
