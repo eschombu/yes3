@@ -3,7 +3,7 @@ from functools import cached_property, partial
 from typing import Optional, Self
 
 from yes3 import s3
-from yes3.caching.base import Cache, CachePathDictCatalog, CacheReaderWriter
+from yes3.caching.base import Cache, CacheDictCatalog, CacheReaderWriter
 from yes3.s3 import S3Location
 
 
@@ -77,7 +77,7 @@ class S3Cache(Cache):
             rw_kwargs['file_type'] = file_type
         reader_writer = S3ReaderWriter(path, **rw_kwargs)
         catalog_builder = partial(cls._build_catalog_dict, reader_writer)
-        catalog = CachePathDictCatalog(catalog_builder=catalog_builder)
+        catalog = CacheDictCatalog(catalog_builder=catalog_builder)
         return cls(catalog, reader_writer, **kwargs)
 
     @property

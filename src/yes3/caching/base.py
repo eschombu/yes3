@@ -1,5 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from collections.abc import Callable
+from dataclasses import asdict, dataclass
 from typing import Any, Iterator, Optional, Self
 
 
@@ -14,6 +15,17 @@ def raise_not_found(key) -> KeyError:
     raise KeyError(f"key '{key}' not found in cache")
 
 
+@dataclass
+class CachedItemMeta:
+    key: str
+    path: Optional[str]
+    size: Optional[int]
+    timestamp: Optional[float]
+
+    def to_dict(self):
+        return asdict(self)
+
+
 class CacheCore(metaclass=ABCMeta):
     def __init__(self, active=True, read_only=False):
         self._read_only = read_only
@@ -25,6 +37,10 @@ class CacheCore(metaclass=ABCMeta):
 
     @abstractmethod
     def get(self, key, default=UNSPECIFIED):
+        pass
+
+    @abstractmethod
+    def get_meta(self, key) -> CachedItemMeta:
         pass
 
     @abstractmethod
@@ -99,7 +115,11 @@ class CacheCatalog(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def add(self, key: str, value):
+    def add(self, key: str, info: CachedItemMeta):
+        pass
+
+    @abstractmethod
+    def get(self, key: str) -> CachedItemMeta:
         pass
 
     @abstractmethod
@@ -115,14 +135,15 @@ class CacheCatalog(metaclass=ABCMeta):
         pass
 
 
-CatalogBuilderT = Callable[[], dict]
+_CatalogT = dict[str, CachedItemMeta]
+_CatalogBuilderT = Callable[[], _CatalogT]
 
 
-class CachePathDictCatalog(CacheCatalog):
+class CacheDictCatalog(CacheCatalog):
     def __init__(
             self,
-            catalog: Optional[dict[str, Any]] = None,
-            catalog_builder: Optional[CatalogBuilderT] = None,
+            catalog: Optional[dict[str, CachedItemMeta]] = None,
+            catalog_builder: Optional[_CatalogBuilderT] = None,
     ):
         self._catalog = catalog
         if catalog_builder is None:
@@ -137,8 +158,11 @@ class CachePathDictCatalog(CacheCatalog):
     def contains(self, key: str):
         return key in self._catalog
 
-    def add(self, key: str, value: Any):
-        self._catalog[key] = value
+    def add(self, key: str, meta: CachedItemMeta):
+        self._catalog[key] = meta
+
+    def get(self, key: str) -> CachedItemMeta:
+        return self._catalog[key]
 
     def remove(self, key: str):
         self._catalog.pop(key)
@@ -146,7 +170,7 @@ class CachePathDictCatalog(CacheCatalog):
     def keys(self):
         return list(self._catalog.keys())
 
-    def items(self):
+    def items(self) -> Iterator[tuple[str, CachedItemMeta]]:
         return iter(self._catalog.items())
 
 
@@ -174,14 +198,19 @@ class Cache(CacheCore, metaclass=ABCMeta):
                 return default
         return self._reader_writer.read(key)
 
+    def get_meta(self, key: str) -> CachedItemMeta:
+        if not self.is_active() or key not in self:
+            raise_not_found(key)
+        return self._catalog.get(key)
+
     def put(self, key: str, obj, *, update=False) -> Self:
         if self.is_read_only():
             raise TypeError('Cache is in read only mode')
         if self.is_active():
             if key in self and not update:
                 raise ValueError(f"key '{key}' already exists in cache; use 'update' to overwrite")
-            path = self._reader_writer.write(key, obj)
-            self._catalog.add(key, path)
+            info = self._reader_writer.write(key, obj)
+            self._catalog.add(key, info)
         return self
 
     def update(self, key: str, obj):
@@ -222,7 +251,13 @@ class Cache(CacheCore, metaclass=ABCMeta):
 
 
 class Serializer(metaclass=ABCMeta):
-    ext = None
+    default_ext = None
+
+    def __init__(self, ext=None):
+        if ext is None:
+            self.ext = self.default_ext
+        else:
+            self.ext = ext
 
     @abstractmethod
     def read(self, path):

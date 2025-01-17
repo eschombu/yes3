@@ -1,6 +1,6 @@
 from typing import Iterator, Self
 
-from yes3.caching.base import CacheCore, raise_not_found, UNSPECIFIED
+from yes3.caching.base import CacheCore, raise_not_found, UNSPECIFIED, CachedItemMeta
 
 
 class MultiCache(CacheCore):
@@ -71,6 +71,33 @@ class MultiCache(CacheCore):
                 if key not in cache:
                     cache.put(key, result)
         return result
+
+    def get_meta(self, key) -> CachedItemMeta:
+        meta = None
+        for cache in self:
+            if key in cache:
+                c_meta = cache.get_meta(key)
+                if meta is None:
+                    meta = c_meta
+                elif meta != c_meta:
+                    print(f"WARNING: meta data mismatch in caches for '{key}'")
+        if meta is None:
+            raise_not_found(key)
+        return meta
+
+    def check_meta_mismatches(self, key=None) -> dict[str, tuple[CachedItemMeta, ...]]:
+        mismatches = {}
+        if key is None:
+            keys = self.keys()
+        else:
+            keys = [key]
+        for key in keys:
+            metas = [cache.get_meta(key) for cache in self if key in cache]
+            if len(metas) > 1:
+                first_meta = metas[0]
+                if any(meta != first_meta for meta in metas[1:]):
+                    mismatches[key] = tuple(metas)
+        return mismatches
 
     def put(self, key: str, obj, *, update=False) -> Self:
         for cache in self:
