@@ -100,7 +100,7 @@ class MultiCache(CacheCore):
                     mismatches[key] = tuple(metas)
         return mismatches
 
-    def get_all_metadata(self) -> dict[str, dict[str, dict]]:
+    def compare_all_metadata(self) -> dict[str, dict[str, dict]]:
         metadata = defaultdict(dict)
         for key in self.keys():
             for i, cache in enumerate(self):
