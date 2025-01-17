@@ -101,6 +101,10 @@ class CacheReaderWriter(metaclass=ABCMeta):
         pass
 
     @abstractmethod
+    def get_meta(self, key: str) -> CachedItemMeta:
+        pass
+
+    @abstractmethod
     def write(self, key: str, obj, meta=None) -> CachedItemMeta:
         pass
 
@@ -264,5 +268,5 @@ class Serializer(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def write(self, obj, path):
+    def write(self, path, obj):
         pass

@@ -106,9 +106,26 @@ class LocalReaderWriter(CacheReaderWriter):
         print(f"Reading cached item '{key}' at {path}")
         return self.obj_serializer.read(path)
 
-    def get_info(self, key: str) -> CachedItemMeta:
-        path = self.key2path(key, meta=True)
-        return self.meta_serializer.read(path)
+    def _build_meta(self, key: str, path, obj) -> CachedItemMeta:
+        rel_path = path.relative_to(self.path)
+        return CachedItemMeta(
+            key=key,
+            path=str(rel_path),
+            size=sys.getsizeof(obj, -1),
+            timestamp=datetime.now(UTC).timestamp(),
+        )
+
+    def get_meta(self, key: str, rebuild=False) -> CachedItemMeta:
+        if rebuild:
+            obj_path = self.key2path(key)
+            meta_path = self.key2path(key, meta=True)
+            obj = self.obj_serializer.read(obj_path)
+            meta = self._build_meta(key, obj_path, obj)
+            self.meta_serializer.write(meta_path, meta)
+        else:
+            meta_path = self.key2path(key, meta=True)
+            meta = self.meta_serializer.read(meta_path)
+        return meta
 
     def write(self, key: str, obj, meta: Optional[CachedItemMeta] = None) -> CachedItemMeta:
         path = self.key2path(key)
@@ -117,13 +134,7 @@ class LocalReaderWriter(CacheReaderWriter):
 
         meta_path = self.key2path(key, meta=True)
         if meta is None:
-            rel_path = path.relative_to(self.path)
-            meta = CachedItemMeta(
-                key=key,
-                path=str(rel_path),
-                size=sys.getsizeof(obj, -1),
-                timestamp=datetime.now(UTC).timestamp(),
-            )
+            meta = self._build_meta(key, path, obj)
         self.meta_serializer.write(meta_path, meta)
         return meta
 
@@ -137,7 +148,7 @@ class LocalReaderWriter(CacheReaderWriter):
 
 class LocalDiskCache(Cache):
     @staticmethod
-    def _build_catalog_dict(reader_writer: LocalReaderWriter) -> dict:
+    def _build_catalog_dict(reader_writer: LocalReaderWriter, rebuild_missing_meta=False) -> dict:
         catalog_dict = {}
         if os.path.exists(reader_writer.path):
             data_ext = reader_writer.obj_serializer.ext.lstrip('.')
@@ -147,9 +158,13 @@ class LocalDiskCache(Cache):
             data_map = {Path(p).stem: p for p in data_files}
             meta_map = {Path(p).stem: p for p in meta_files}
             if data_map.keys() != meta_map.keys():
-                raise RuntimeError(f'data and metadata files are not aligned for a valid cache at {reader_writer.path}')
-            for key, meta_path in meta_map.items():
-                catalog_dict[key] = reader_writer.get_info(key)
+                if rebuild_missing_meta:
+                    print(f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
+                          'rebuilding missing metadata files')
+                else:
+                    raise RuntimeError(f'data and metadata files are not aligned for cache at {reader_writer.path}')
+            for key in data_map.keys():
+                catalog_dict[key] = reader_writer.get_meta(key, rebuild=(key not in meta_map and rebuild_missing_meta))
         if len(catalog_dict.keys()) > 0:
             print(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path}')
         return catalog_dict
@@ -161,11 +176,13 @@ class LocalDiskCache(Cache):
             obj_serializer: str | Serializer = PickleSerializer(),
             meta_serializer: str | Serializer = JsonMetaSerializer(),
             reader_writer: Optional[CacheReaderWriter] = None,
+            rebuild_missing_meta=False,
             **kwargs,
     ):
         if reader_writer is None:
             reader_writer = LocalReaderWriter(path, obj_serializer, meta_serializer)
-        catalog_builder = partial(cls._build_catalog_dict, reader_writer=reader_writer)
+        catalog_builder = partial(cls._build_catalog_dict, reader_writer=reader_writer,
+                                  rebuild_missing_meta=rebuild_missing_meta)
         catalog = CacheDictCatalog(catalog_builder=catalog_builder)
         return cls(catalog, reader_writer, **kwargs)
 

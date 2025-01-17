@@ -583,6 +583,8 @@ def write_to_s3(
     elif file_type == 'txt':
         with open(local_temp_file, 'w') as f:
             f.write(str(obj))
+    else:
+        raise ValueError(f"Unrecognized file_type: '{file_type}'")
 
     written_loc = upload(local_temp_file, s3_loc)
     print(f'Deleting {local_temp_file}')

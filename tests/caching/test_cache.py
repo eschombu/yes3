@@ -1,3 +1,4 @@
+import os.path
 import shutil
 import unittest
 from pathlib import Path
@@ -36,22 +37,22 @@ data = {'i': 42, 's': 'hello world'}
 updated_data = data.copy()
 updated_data['i'] = 43
 key = 'test_data'
-local_path = TEST_LOCAL_DIR / (key + '.pkl')
+local_obj_path = TEST_LOCAL_DIR / (key + '.pkl')
 local_meta_path = TEST_LOCAL_DIR / (key + '.meta')
-s3_loc = S3Location(TEST_S3_DIR).join(key)
+s3_obj_loc = S3Location(TEST_S3_DIR).join(key)
 s3_meta_loc = S3Location(TEST_S3_DIR).join(key + '.meta')
 
 
 class TestLocalDiskCache(unittest.TestCase):
-    def _check_path_exists(self, cache, expect_exists: bool, key=None):
+    def _check_paths_exists(self, cache, expect_exists: bool):
         if isinstance(cache, MultiCache):
             for c in cache:
-                path = s3_loc if isinstance(c.path, S3Location) else local_path
+                path = s3_obj_loc if isinstance(c.path, S3Location) else local_obj_path
                 self.assertIs(path.exists(), expect_exists)
                 meta_path = s3_meta_loc if isinstance(c.path, S3Location) else local_meta_path
                 self.assertIs(meta_path.exists(), expect_exists)
         else:
-            path = s3_loc if isinstance(cache.path, S3Location) else local_path
+            path = s3_obj_loc if isinstance(cache.path, S3Location) else local_obj_path
             self.assertIs(path.exists(), expect_exists)
             meta_path = s3_meta_loc if isinstance(cache.path, S3Location) else local_meta_path
             self.assertIs(meta_path.exists(), expect_exists)
@@ -63,7 +64,7 @@ class TestLocalDiskCache(unittest.TestCase):
 
     def _test_missing_data(self, cache: CacheCore):
         self.assertFalse(key in cache)
-        self._check_path_exists(cache, False)
+        self._check_paths_exists(cache, False)
         with self.assertRaises(KeyError):
             _ = cache.get(key)
         with self.assertRaises(KeyError):
@@ -78,7 +79,7 @@ class TestLocalDiskCache(unittest.TestCase):
         retrieved = cache.get(key)
         self.assertEqual(retrieved, data)
         self.assertEqual(list(cache.keys()), [key])
-        self._check_path_exists(cache, True)
+        self._check_paths_exists(cache, True)
 
         retrieved = cache[key]
         self.assertEqual(retrieved, data)
@@ -112,14 +113,14 @@ class TestLocalDiskCache(unittest.TestCase):
         cache.remove(key)
         self.assertFalse(key in cache)
         self.assertIsNone(cache.get(key, None))
-        self._check_path_exists(cache, False)
+        self._check_paths_exists(cache, False)
 
         with self.assertRaises(KeyError):
             cache.update(key, data)
         cache[key] = data
         retrieved = cache.pop(key)
         self.assertFalse(key in cache)
-        self._check_path_exists(cache, False)
+        self._check_paths_exists(cache, False)
         self.assertEqual(retrieved, data)
 
     def _test_initializing_local_cache_with_data(self, cache: LocalDiskCache):
@@ -130,7 +131,7 @@ class TestLocalDiskCache(unittest.TestCase):
         self.assertEqual(retrieved, data)
 
     def _test_clearing_local_cache(self, cache: LocalDiskCache):
-        path = local_path
+        path = local_obj_path
         if key not in cache:
             cache.put(key, data)
         second_cache = LocalDiskCache.create(cache.path)
@@ -146,6 +147,34 @@ class TestLocalDiskCache(unittest.TestCase):
         with self.assertRaises(FileNotFoundError):
             second_cache.get(key)
 
+    def _test_rebuild_missing_meta(self, local=True):
+        if local:
+            CacheType = LocalDiskCache
+            cache_dir = TEST_LOCAL_DIR
+            meta_path = local_meta_path
+            rm_fun = os.remove
+        else:
+            CacheType = S3Cache
+            cache_dir = TEST_S3_DIR
+            meta_path = s3_meta_loc
+            rm_fun = s3.delete
+
+        cache = CacheType.create(cache_dir)
+        if key not in cache:
+            cache.put(key, data)
+        self._check_paths_exists(cache, True)
+        meta = cache.get_meta(key)
+        rm_fun(meta_path)
+        with self.assertRaises(RuntimeError):
+            new_cache = CacheType.create(cache_dir)
+        new_cache = CacheType.create(cache_dir, rebuild_missing_meta=True)
+        self._check_paths_exists(new_cache, True)
+        new_meta = new_cache.get_meta(key)
+        self.assertEqual(new_meta.key, meta.key)
+        self.assertEqual(new_meta.size, meta.size)
+        self.assertEqual(new_meta.path, meta.path)
+        self.assertGreater(new_meta.timestamp, meta.timestamp)
+
     def _run_local_tests(self, cache: LocalDiskCache):
         self._test_cache_state(cache)
         self._test_missing_data(cache)
@@ -153,6 +182,7 @@ class TestLocalDiskCache(unittest.TestCase):
         self._test_updating_data(cache)
         self._test_removing_data(cache)
         self._test_initializing_local_cache_with_data(cache)
+        self._test_rebuild_missing_meta(local=True)
         self._test_clearing_local_cache(cache)
 
     def _test_local_cache(self):
@@ -167,7 +197,7 @@ class TestLocalDiskCache(unittest.TestCase):
         self.assertEqual(retrieved, data)
 
     def _test_clearing_s3_cache(self, cache: S3Cache):
-        path = s3_loc
+        path = s3_obj_loc
         if key not in cache:
             cache.put(key, data)
         second_cache = S3Cache.create(cache.path)
@@ -190,6 +220,7 @@ class TestLocalDiskCache(unittest.TestCase):
         self._test_updating_data(cache)
         self._test_removing_data(cache)
         self._test_initializing_s3_cache_with_data(cache)
+        self._test_rebuild_missing_meta(local=False)
         self._test_clearing_s3_cache(cache)
 
     @mock_aws

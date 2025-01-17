@@ -53,10 +53,27 @@ class S3ReaderWriter(CacheReaderWriter):
         print(f"Reading cached item '{key}' at {path.s3_uri}")
         return s3.read(path, file_type=file_type)
 
-    def get_info(self, key: str) -> CachedItemMeta:
-        path = self.key2path(key, meta=True)
-        meta = s3.read(path, file_type=self._meta_file_type)
-        return CachedItemMeta(**meta)
+    def _build_meta(self, key: str, path, obj) -> CachedItemMeta:
+        rel_path = Path(path.key).relative_to(Path(self.path.key))
+        return CachedItemMeta(
+            key=key,
+            path=str(rel_path),
+            size=sys.getsizeof(obj, -1),
+            timestamp=datetime.now(UTC).timestamp(),
+        )
+
+    def get_meta(self, key: str, rebuild=False, file_type=None) -> CachedItemMeta:
+        if rebuild:
+            obj_path = self.key2path(key)
+            meta_path = self.key2path(key, meta=True)
+            obj = s3.read(obj_path, file_type=(file_type or self._file_type))
+            meta = self._build_meta(key, obj_path, obj)
+            s3.write_to_s3(meta.to_dict(), meta_path, file_type=self._meta_file_type)
+        else:
+            meta_path = self.key2path(key, meta=True)
+            meta_dict = s3.read(meta_path, file_type=self._meta_file_type)
+            meta = CachedItemMeta(**meta_dict)
+        return meta
 
     def write(self, key: str, obj, meta: Optional[CachedItemMeta] = None, file_type=None) -> CachedItemMeta:
         file_type = file_type or self._file_type
@@ -66,13 +83,7 @@ class S3ReaderWriter(CacheReaderWriter):
 
         meta_path = self.key2path(key, meta=True)
         if meta is None:
-            rel_path = Path(path.key).relative_to(Path(self.path.key))
-            meta = CachedItemMeta(
-                key=key,
-                path=str(rel_path),
-                size=sys.getsizeof(obj, -1),
-                timestamp=datetime.now(UTC).timestamp(),
-            )
+            meta = self._build_meta(key, path, obj)
         s3.write_to_s3(meta.to_dict(), meta_path, file_type=self._meta_file_type)
         return meta
 
@@ -86,7 +97,7 @@ class S3ReaderWriter(CacheReaderWriter):
 
 class S3Cache(Cache):
     @staticmethod
-    def _build_catalog_dict(reader_writer: S3ReaderWriter) -> dict:
+    def _build_catalog_dict(reader_writer: S3ReaderWriter, rebuild_missing_meta=False) -> dict:
         catalog_dict = {}
         locations = s3.list_objects(reader_writer.path)
         meta_locs = [loc for loc in locations if loc.key.endswith(reader_writer._meta_ext)]
@@ -94,9 +105,13 @@ class S3Cache(Cache):
         data_map = {reader_writer.path2key(loc): loc for loc in data_locs}
         meta_map = {reader_writer.path2key(loc): loc for loc in meta_locs}
         if data_map.keys() != meta_map.keys():
-            raise RuntimeError(f'data and metadata files are not aligned for a valid cache at {reader_writer.path}')
-        for key in meta_map.keys():
-            catalog_dict[key] = reader_writer.get_info(key)
+            if rebuild_missing_meta:
+                print(f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
+                      'rebuilding missing metadata files')
+            else:
+                raise RuntimeError(f'data and metadata files are not aligned for cache at {reader_writer.path}')
+        for key in data_map.keys():
+            catalog_dict[key] = reader_writer.get_meta(key, rebuild=(key not in meta_map and rebuild_missing_meta))
         if len(catalog_dict.keys()) > 0:
             print(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path.s3_uri}')
         return catalog_dict
@@ -109,6 +124,7 @@ class S3Cache(Cache):
             meta_file_type=None,
             meta_ext=None,
             reader_writer: Optional[CacheReaderWriter] = None,
+            rebuild_missing_meta=False,
             **kwargs,
     ):
         if reader_writer is None:
@@ -120,7 +136,8 @@ class S3Cache(Cache):
             if meta_ext is not None:
                 rw_kwargs['meta_ext'] = meta_ext
             reader_writer = S3ReaderWriter(path, **rw_kwargs)
-        catalog_builder = partial(cls._build_catalog_dict, reader_writer)
+        catalog_builder = partial(cls._build_catalog_dict, reader_writer=reader_writer,
+                                  rebuild_missing_meta=rebuild_missing_meta)
         catalog = CacheDictCatalog(catalog_builder=catalog_builder)
         return cls(catalog, reader_writer, **kwargs)
 
