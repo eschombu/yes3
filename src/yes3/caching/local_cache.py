@@ -31,10 +31,10 @@ class JsonSerializer(Serializer):
         with open(path, 'r') as f:
             return json.load(f)
 
-    def write(self, path, meta: dict):
+    def write(self, path, obj: dict):
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, 'w') as f:
-            json.dump(meta, f)
+            json.dump(obj, f)
 
 
 class JsonMetaSerializer(JsonSerializer):
