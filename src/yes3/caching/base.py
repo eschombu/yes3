@@ -44,7 +44,7 @@ class CacheCore(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def put(self, key, obj, update=False):
+    def put(self, key, obj, update=False, meta: Optional[CachedItemMeta] = None):
         pass
 
     @abstractmethod
@@ -101,7 +101,7 @@ class CacheReaderWriter(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def write(self, key: str, obj) -> str:
+    def write(self, key: str, obj, meta=None) -> CachedItemMeta:
         pass
 
     @abstractmethod
@@ -203,14 +203,14 @@ class Cache(CacheCore, metaclass=ABCMeta):
             raise_not_found(key)
         return self._catalog.get(key)
 
-    def put(self, key: str, obj, *, update=False) -> Self:
+    def put(self, key: str, obj, *, update=False, meta: Optional[CachedItemMeta] = None) -> Self:
         if self.is_read_only():
             raise TypeError('Cache is in read only mode')
         if self.is_active():
             if key in self and not update:
                 raise ValueError(f"key '{key}' already exists in cache; use 'update' to overwrite")
-            info = self._reader_writer.write(key, obj)
-            self._catalog.add(key, info)
+            meta = self._reader_writer.write(key, obj, meta=meta)
+            self._catalog.add(key, meta)
         return self
 
     def update(self, key: str, obj):

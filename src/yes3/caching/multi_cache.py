@@ -1,4 +1,4 @@
-from typing import Iterator, Self
+from typing import Iterator, Optional, Self
 
 from yes3.caching.base import CacheCore, raise_not_found, UNSPECIFIED, CachedItemMeta
 
@@ -99,12 +99,16 @@ class MultiCache(CacheCore):
                     mismatches[key] = tuple(metas)
         return mismatches
 
-    def put(self, key: str, obj, *, update=False) -> Self:
+    def put(self, key: str, obj, *, update=False, meta: Optional[CachedItemMeta] = None) -> Self:
         for cache in self:
             if cache.is_read_only():
                 continue
-            cache.put(key, obj, update=update)
-            if not self._sync_all:
+            cache.put(key, obj, update=update, meta=meta)
+            meta = cache.get_meta(key)
+            mismatch = self.check_meta_mismatches(key)
+            if mismatch and not update:
+                print(f"WARNING: Metadata mismatch for '{key}'. Use update=True to sync across caches.")
+            if not self._sync_all and not mismatch:
                 break
         return self
 
@@ -137,11 +141,17 @@ class MultiCache(CacheCore):
     def sync_now(self) -> Self:
         for key in self.keys():
             obj = None
+            meta = None
             for cache in self:
                 if key not in cache:
                     if obj is None:
                         obj = self.get(key, sync=False)
-                    cache.put(key, obj)
+                        meta = self.get_meta(key)
+                    cache.put(key, obj, meta=meta)
+                else:
+                    mismatch = self.check_meta_mismatches(key)
+                    if mismatch:
+                        raise RuntimeError(f"Metadata mismatch for '{key}'")
         return self
 
     def sync_always(self):

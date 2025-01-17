@@ -110,7 +110,7 @@ class LocalReaderWriter(CacheReaderWriter):
         path = self.key2path(key, meta=True)
         return self.meta_serializer.read(path)
 
-    def write(self, key: str, obj, meta=None) -> CachedItemMeta:
+    def write(self, key: str, obj, meta: Optional[CachedItemMeta] = None) -> CachedItemMeta:
         path = self.key2path(key)
         print(f"Caching item '{key}' at {path}")
         self.obj_serializer.write(path, obj)

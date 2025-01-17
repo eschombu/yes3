@@ -64,15 +64,13 @@ class TestLocalDiskCache(unittest.TestCase):
             for c in cache:
                 path = s3_loc if isinstance(c.path, S3Location) else local_path
                 self.assertIs(path.exists(), expect_exists)
-                if not isinstance(path, S3Location):
-                    meta_path = s3_meta_loc if isinstance(c.path, S3Location) else local_meta_path
-                    self.assertIs(meta_path.exists(), expect_exists)
+                meta_path = s3_meta_loc if isinstance(c.path, S3Location) else local_meta_path
+                self.assertIs(meta_path.exists(), expect_exists)
         else:
             path = s3_loc if isinstance(cache.path, S3Location) else local_path
             self.assertIs(path.exists(), expect_exists)
-            if not isinstance(path, S3Location):
-                meta_path = s3_meta_loc if isinstance(cache.path, S3Location) else local_meta_path
-                self.assertIs(meta_path.exists(), expect_exists)
+            meta_path = s3_meta_loc if isinstance(cache.path, S3Location) else local_meta_path
+            self.assertIs(meta_path.exists(), expect_exists)
 
     def _test_cache_state(self, cache: CacheCore):
         self.assertFalse(cache.is_active())
@@ -117,16 +115,14 @@ class TestLocalDiskCache(unittest.TestCase):
         new_meta = cache.get_meta(key)
         self.assertEqual(retrieved, updated_data)
         self.assertNotEqual(retrieved, data)
-        if not isinstance(cache, S3Cache):
-            check_meta(start_meta, new_meta)
+        check_meta(start_meta, new_meta)
 
         cache.put(key, data, update=True)
         retrieved = cache.get(key)
         new_new_meta = cache.get_meta(key)
         self.assertEqual(retrieved, data)
         self.assertNotEqual(retrieved, updated_data)
-        if not isinstance(cache, S3Cache):
-            check_meta(start_meta, new_new_meta)
+        check_meta(start_meta, new_new_meta)
 
     def _test_removing_data(self, cache: CacheCore):
         cache.remove(key)
@@ -219,12 +215,27 @@ class TestLocalDiskCache(unittest.TestCase):
         cache = S3Cache.create(TEST_S3_DIR, active=False)
         self._run_s3_tests(cache)
 
+    def _test_multi_cache_sync(self, cache: MultiCache):
+        for c in cache:
+            self.assertEqual(len(c.keys()), 0)
+
+        cache.put(key, data)
+        mismatches = cache.check_meta_mismatches()
+        self.assertEqual(len(mismatches), 0)
+
+        cache._caches[0].update(key, data)
+        mismatches = cache.check_meta_mismatches()
+        self.assertEqual(len(mismatches), 1)
+        with self.assertRaises(RuntimeError):
+            cache.sync_now()
+
     def _run_multi_tests(self, cache: MultiCache):
         self._test_cache_state(cache)
         self._test_missing_data(cache)
         self._test_adding_data(cache)
         self._test_updating_data(cache)
         self._test_removing_data(cache)
+        self._test_multi_cache_sync(cache)
 
     @mock_aws
     def test_multi_cache(self):
