@@ -1,30 +1,14 @@
 import shutil
-import sys
 import unittest
 from pathlib import Path
 
 from moto import mock_aws
 
-from yes3.caching.base import CachedItemMeta
-from yes3.s3 import S3Location
+from yes3 import s3, S3Location
+from yes3.caching import CacheCore, CachedItemMeta, LocalDiskCache, MultiCache, S3Cache
+from yes3.utils.testing import get_arg_parser, run_tests
 
-this_dir = Path(__file__).resolve().parent
-repo_root = this_dir.parent.parent
-
-try:
-    from tests import get_arg_parser, run_tests
-except ModuleNotFoundError:
-    sys.path.insert(0, str(repo_root))
-    from tests import get_arg_parser, run_tests
-
-try:
-    from yes3.caching import CacheCore, LocalDiskCache, MultiCache, S3Cache, Cache
-except ModuleNotFoundError:
-    sys.path.insert(0, str(repo_root / 'src'))
-    from yes3.caching import CacheCore, LocalDiskCache, MultiCache, S3Cache
-from yes3 import s3
-
-TEST_LOCAL_DIR = Path('_tmp_test_dir_')
+TEST_LOCAL_DIR = Path('_tmp_cache_test_dir_')
 TEST_BUCKET = 'mock-bucket'
 TEST_S3_DIR = f's3://{TEST_BUCKET}/unit-tests/'
 VERBOSE = False
@@ -171,7 +155,7 @@ class TestLocalDiskCache(unittest.TestCase):
         self._test_initializing_local_cache_with_data(cache)
         self._test_clearing_local_cache(cache)
 
-    def test_local_cache(self):
+    def _test_local_cache(self):
         cache = LocalDiskCache.create(TEST_LOCAL_DIR, active=False)
         self._run_local_tests(cache)
 
@@ -209,7 +193,7 @@ class TestLocalDiskCache(unittest.TestCase):
         self._test_clearing_s3_cache(cache)
 
     @mock_aws
-    def test_s3_cache(self):
+    def _test_s3_cache(self):
         # moto (aws mock) requires the bucket be created before use
         s3._client.create_bucket(Bucket=TEST_BUCKET)
         cache = S3Cache.create(TEST_S3_DIR, active=False)
@@ -238,7 +222,7 @@ class TestLocalDiskCache(unittest.TestCase):
         self._test_multi_cache_sync(cache)
 
     @mock_aws
-    def test_multi_cache(self):
+    def _test_multi_cache(self):
         # moto (aws mock) requires the bucket be created before use
         s3._client.create_bucket(Bucket=TEST_BUCKET)
         local_cache = LocalDiskCache.create(TEST_LOCAL_DIR, active=False)
@@ -246,15 +230,20 @@ class TestLocalDiskCache(unittest.TestCase):
         multi_cache = MultiCache([local_cache, s3_cache], sync_all=True)
         self._run_multi_tests(multi_cache)
 
+    def test_all_tests(self):
+        try:
+            self._test_local_cache()
+            self._test_s3_cache()
+            self._test_multi_cache()
+        except Exception:
+            raise
+        finally:
+            _cleanup_local()
+
 
 if __name__ == '__main__':
     arg_parser = get_arg_parser()
     args = arg_parser.parse_args()
     if args.verbose:
         VERBOSE = True
-    try:
-        run_tests(args, TestLocalDiskCache)
-    except Exception:
-        raise
-    finally:
-        _cleanup_local()
+    run_tests(args, TestLocalDiskCache)

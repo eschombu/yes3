@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional, Self
 
 from yes3 import s3
-from yes3.caching.base import Cache, CacheDictCatalog, CacheReaderWriter, CachedItemMeta
+from yes3.caching.base import Cache, CacheDictCatalog, CachedItemMeta, CacheReaderWriter
 from yes3.s3 import S3Location
 
 

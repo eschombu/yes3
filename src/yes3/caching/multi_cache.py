@@ -1,6 +1,6 @@
 from typing import Iterator, Optional, Self
 
-from yes3.caching.base import CacheCore, raise_not_found, UNSPECIFIED, CachedItemMeta
+from yes3.caching.base import CacheCore, CachedItemMeta, raise_not_found, UNSPECIFIED
 
 
 class MultiCache(CacheCore):

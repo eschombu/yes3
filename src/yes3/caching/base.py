@@ -147,7 +147,7 @@ class CacheDictCatalog(CacheCatalog):
     ):
         self._catalog = catalog
         if catalog_builder is None:
-            catalog_builder = lambda: dict()
+            catalog_builder = dict
         self._build_catalog = catalog_builder
         if self._catalog is None:
             self.rebuild()

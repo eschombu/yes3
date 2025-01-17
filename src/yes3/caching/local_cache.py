@@ -8,7 +8,7 @@ from glob import glob
 from pathlib import Path
 from typing import Optional, Self
 
-from yes3.caching.base import Cache, CachedItemMeta, CacheDictCatalog, Serializer, CacheReaderWriter
+from yes3.caching.base import Cache, CacheDictCatalog, CachedItemMeta, Serializer, CacheReaderWriter
 
 
 class PickleSerializer(Serializer):
