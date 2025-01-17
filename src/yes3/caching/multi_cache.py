@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import Iterator, Optional, Self
 
 from yes3.caching.base import CacheCore, CachedItemMeta, raise_not_found, UNSPECIFIED
@@ -98,6 +99,16 @@ class MultiCache(CacheCore):
                 if any(meta != first_meta for meta in metas[1:]):
                     mismatches[key] = tuple(metas)
         return mismatches
+
+    def get_all_metadata(self) -> dict[str, dict[str, dict]]:
+        metadata = defaultdict(dict)
+        for key in self.keys():
+            for i, cache in enumerate(self):
+                cache_key = f'Cache {i + 1}'
+                if hasattr(cache, 'path'):
+                    cache_key += f' ({cache.path})'
+                metadata[key][cache_key] = cache.get_meta(key).to_dict() if key in cache else None
+        return dict(metadata)
 
     def put(self, key: str, obj, *, update=False, meta: Optional[CachedItemMeta] = None) -> Self:
         for cache in self:
