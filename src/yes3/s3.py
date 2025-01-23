@@ -15,31 +15,31 @@ import numpy as np
 import pandas as pd
 
 from .client import get_client as _get_client
+from .config import S3Config
 from .utils.decorators import timeit_opt
 
-DEFAULT_REGION = 'us-east-2'
 _client = _get_client()
+global S3_CONFIG
+try:  # Don't want to overwrite the value of _VERBOSE if it has already been set
+    S3_CONFIG
+except NameError:
+    S3_CONFIG = S3Config()
 
 # TODO:
 #  1. Replace _verbose_print with logger
 #  2. Add overwrite protection options
-#  3. Add direct read/write functions
 #  4. Add some more shortcut methods to S3Location, perhaps some aliases
 
-global _VERBOSE
-try:  # Don't want to overwrite the value of _VERBOSE if it has already been set
-    _VERBOSE
-except NameError:
-    _VERBOSE = False
 
-
-def set_verbosity(verbose: bool) -> None:
-    global _VERBOSE
-    _VERBOSE = verbose
+def config(**config_params):
+    global S3_CONFIG
+    for param, value in config_params.items():
+        setattr(S3_CONFIG, param, value)
+    return S3_CONFIG
 
 
 def _verbose_print(*args, **kwargs):
-    if _VERBOSE:
+    if S3_CONFIG.verbose:
         print(*args, **kwargs)
 
 
@@ -89,7 +89,7 @@ class S3Location:
 
     @property
     def https_url(self, region=None) -> str:
-        region = region or (self.region or DEFAULT_REGION)
+        region = region or (self.region or S3_CONFIG.default_region)
         s = f'https://s3.{region}.amazonaws.com/{quote(self.bucket)}'
         if self.key is not None:
             s += f'/{quote(self.key)}'
