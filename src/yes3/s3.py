@@ -405,8 +405,8 @@ def _upload_file(local_path: LocalPathLike, location: S3Location, progress=None)
     if location.is_dir():
         filename = local_path.name
         location = location.join(filename)
-    callback = _get_upload_prog_callback(progress, local_path)
     _verbose_print(f'Uploading {local_path} to {location.s3_uri}... ', end='')
+    callback = _get_upload_prog_callback(progress, local_path)
     _client.upload_file(str(local_path), location.bucket, location.key, Callback=callback)
     _verbose_print('DONE')
     return location
@@ -518,8 +518,8 @@ def _download_object(location: S3Location, local_path: LocalPathLike, progress=N
         local_path = local_path / filename
     else:
         os.makedirs(local_path.parent, exist_ok=True)
-    callback = _get_download_prog_callback(progress, location)
     _verbose_print(f'Downloading {location.s3_uri} to {local_path}... ', end='')
+    callback = _get_download_prog_callback(progress, location)
     _client.download_file(location.bucket, location.key, str(local_path), Callback=callback)
     _verbose_print('DONE')
     return local_path
@@ -594,13 +594,50 @@ def delete(
         _delete_object(location)
 
 
-def read(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, file_type: Optional[str] = None, **kwargs):
+def read(
+        bucket_or_location: S3LocationLike,
+        prefix: Optional[str] = None,
+        file_type: Optional[str] = None,
+        local_temp_file=None,
+        progress=None,
+        **kwargs,
+):
+    def read_body(body):
+        if file_type == 'pkl':
+            return pickle.load(body, **kwargs)
+        elif file_type == 'json':
+            return json.load(body, **kwargs)
+        elif file_type == 'csv':
+            return pd.read_csv(body, **kwargs)
+        elif file_type == 'npy':
+            return np.load(body, **kwargs)
+        elif file_type == 'parquet':
+            return pd.read_parquet(body, **kwargs)
+        elif file_type in ('txt', 'text'):
+            return body.read().decode()
+        else:
+            return body
+
     location = as_s3_location(bucket_or_location, prefix)
     if not location.exists():
         raise FileNotFoundError(f'No object(s) present at {location.s3_uri}')
     elif not location.is_object():
         raise ValueError(f'{location.s3_uri} is not a uri for a single object, cannot use `read` method.')
-    body = _client.get_object(Bucket=location.bucket, Key=location.key)['Body']
+
+    if callable(progress):
+        with_progress = True
+    else:
+        if progress is False:
+            with_progress = False
+        else:
+            progress_mode, progress_size = _parse_progress_arg(progress)
+            if progress_mode == 'off':
+                with_progress = False
+            elif progress_mode == 'all':
+                with_progress = True
+            else:
+                obj_size = list_objects(location, return_metadata=True)[0].size
+                with_progress = (obj_size >= progress_size)
 
     ext = Path(location.key).suffix
     if file_type is None and ext:
@@ -608,20 +645,19 @@ def read(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, file_
     if file_type is not None:
         file_type = file_type.lstrip('.').lower()
 
-    if file_type == 'pkl':
-        return pickle.load(body, **kwargs)
-    elif file_type == 'json':
-        return json.load(body, **kwargs)
-    elif file_type == 'csv':
-        return pd.read_csv(body, **kwargs)
-    elif file_type == 'npy':
-        return np.load(body, **kwargs)
-    elif file_type == 'parquet':
-        return pd.read_parquet(body, **kwargs)
-    elif file_type in ('txt', 'text'):
-        return body.read().decode()
+    if with_progress or local_temp_file:
+        if not local_temp_file:
+            local_temp_file = f"TMPFILE.{datetime.now().strftime('%Y%m%dT%H%M%S.%f')}"
+        _verbose_print(f"Reading to local temp {file_type} file: {local_temp_file}")
+        body = download(location, local_temp_file, progress=progress)
+        with open(body, 'rb') as f:
+            obj = read_body(f)
+        _verbose_print(f'Deleting {local_temp_file}')
+        os.remove(local_temp_file)
+        return obj
     else:
-        return body
+        body = _client.get_object(Bucket=location.bucket, Key=location.key)['Body']
+        return read_body(body)
 
 
 def write_to_s3(
@@ -643,7 +679,7 @@ def write_to_s3(
     if not file_type:
         file_type = 'pkl'
 
-    print(f"Writing local temp {file_type} file: {local_temp_file}")
+    _verbose_print(f"Writing local temp {file_type} file: {local_temp_file}")
     if file_type == 'json':
         with open(local_temp_file, 'w') as f:
             json.dump(obj, f, **kwargs)
@@ -662,7 +698,7 @@ def write_to_s3(
         raise ValueError(f"Unrecognized file_type: '{file_type}'")
 
     written_loc = upload(local_temp_file, s3_loc, progress=progress)
-    print(f'Deleting {local_temp_file}')
+    _verbose_print(f'Deleting {local_temp_file}')
     os.remove(local_temp_file)
     return written_loc
 
