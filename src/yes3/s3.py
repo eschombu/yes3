@@ -13,6 +13,7 @@ from urllib.parse import quote, unquote, urlparse
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 from .client import get_client as _get_client
 from .config import S3Config
@@ -356,15 +357,36 @@ def is_unmade_dir(path: os.PathLike) -> bool:
         return False
 
 
-def _upload_file(local_path: LocalPathLike, location: S3Location) -> S3Location:
+def _get_upload_prog_callback(progress_arg, path: Path):
+    if progress_arg is False:
+        return
+    if callable(progress_arg):
+        return progress_arg
+    if S3_CONFIG.progress_mode == 'off':
+        return
+
+    obj_size = path.stat().st_size
+    if S3_CONFIG.progress_mode == 'large' and obj_size < S3_CONFIG.progress_size:
+        return
+
+    pbar = tqdm(total=obj_size, desc=f"Uploading {path.name}")
+
+    def f(size):
+        pbar.update(size)
+
+    return f
+
+
+def _upload_file(local_path: LocalPathLike, location: S3Location, progress=None) -> S3Location:
     local_path = Path(local_path).resolve()
     if not local_path.exists():
         raise FileNotFoundError(str(local_path))
     if location.is_dir():
         filename = local_path.name
         location = location.join(filename)
+    callback = _get_upload_prog_callback(progress, local_path)
     _verbose_print(f'Uploading {local_path} to {location.s3_uri}... ', end='')
-    _client.upload_file(str(local_path), location.bucket, location.key)
+    _client.upload_file(str(local_path), location.bucket, location.key, Callback=callback)
     _verbose_print('DONE')
     return location
 
@@ -391,6 +413,7 @@ def upload(
         prefix: Optional[str] = None,
         recursive: bool = False,
         base_dir=None,
+        progress=None,
         # workers: int = 1,
         # threads: int = 1,
 ) -> S3Location | list[S3Location]:
@@ -400,7 +423,7 @@ def upload(
     if not local_path.exists():
         raise FileNotFoundError(f'No paths found matching `{local_path}`')
     elif local_path.is_file():
-        return _upload_file(local_path, location)
+        return _upload_file(local_path, location, progress=progress)
     else:
         if not recursive:
             raise ValueError(f'Must set `recursive=True` for directories or paths with wildcards (*): {local_path}')
@@ -438,13 +461,34 @@ def upload(
         locations = []
         for path in local_paths:
             rel_path = path.relative_to(base_dir)
-            loc = _upload_file(path, location.join(str(rel_path)))
+            loc = _upload_file(path, location.join(str(rel_path)), progress=progress)
             locations.append(loc)
 
         return locations
 
 
-def _download_object(location: S3Location, local_path: LocalPathLike) -> os.PathLike:
+def _get_download_prog_callback(progress_arg, location: S3Location):
+    if progress_arg is False:
+        return
+    if callable(progress_arg):
+        return progress_arg
+    if S3_CONFIG.progress_mode == 'off':
+        return
+
+    obj_meta = list_objects(location, return_metadata=True)[0]
+    obj_size = obj_meta.size
+    if S3_CONFIG.progress_mode == 'large' and obj_size < S3_CONFIG.progress_size:
+        return
+
+    pbar = tqdm(total=obj_size, desc=f"Downloading {obj_meta.location.key.rsplit('/', 1)[-1]}")
+
+    def f(size):
+        pbar.update(size)
+
+    return f
+
+
+def _download_object(location: S3Location, local_path: LocalPathLike, progress=None) -> os.PathLike:
     input_local_path = local_path
     local_path = Path(local_path).resolve()
     if local_path.is_dir() or is_unmade_dir(input_local_path):
@@ -453,8 +497,9 @@ def _download_object(location: S3Location, local_path: LocalPathLike) -> os.Path
         local_path = local_path / filename
     else:
         os.makedirs(local_path.parent, exist_ok=True)
+    callback = _get_download_prog_callback(progress, location)
     _verbose_print(f'Downloading {location.s3_uri} to {local_path}... ', end='')
-    _client.download_file(location.bucket, location.key, str(local_path))
+    _client.download_file(location.bucket, location.key, str(local_path), Callback=callback)
     _verbose_print('DONE')
     return local_path
 
@@ -465,6 +510,7 @@ def download(
         local_path: Optional[LocalPathLike] = None,
         recursive: bool = False,
         base_dir=None,
+        progress=None,
 ) -> str | list[str]:
     if local_path is None:
         local_path = prefix
@@ -483,7 +529,7 @@ def download(
                          'use `recursive=True` to download all objects with this prefix')
 
     if location.is_object():
-        p = _download_object(location, local_path)
+        p = _download_object(location, local_path, progress=progress)
         return str(p)
     else:
         objects = list_objects(location)
@@ -499,7 +545,7 @@ def download(
         for loc in objects:
             rel_dir = Path(loc.key).relative_to(base_dir).parent
             rel_path = local_path / str(rel_dir) / loc.split_key()[1]
-            p = _download_object(loc, rel_path)
+            p = _download_object(loc, rel_path, progress=progress)
             local_paths.append(str(p))
         return local_paths
 
@@ -563,6 +609,7 @@ def write_to_s3(
         key: Optional[str] = None,
         local_temp_file=None,
         file_type: Optional[str] = None,
+        progress=None,
         **kwargs
 ) -> S3Location:
     s3_loc = S3Location(bucket_or_path, key)
@@ -593,7 +640,7 @@ def write_to_s3(
     else:
         raise ValueError(f"Unrecognized file_type: '{file_type}'")
 
-    written_loc = upload(local_temp_file, s3_loc)
+    written_loc = upload(local_temp_file, s3_loc, progress=progress)
     print(f'Deleting {local_temp_file}')
     os.remove(local_temp_file)
     return written_loc

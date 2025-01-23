@@ -198,7 +198,7 @@ class TestS3Utils(unittest.TestCase):
         # moto (aws mock) requires the bucket be created before use
         s3._client.create_bucket(Bucket=TEST_BUCKET)
 
-        s3.set_verbosity(VERBOSE)
+        s3.config(verbose=VERBOSE)
         tests = [
             _create_test_files,
             _test_single_uploads,
