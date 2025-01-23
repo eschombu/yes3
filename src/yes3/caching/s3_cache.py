@@ -27,11 +27,13 @@ class S3ReaderWriter(CacheReaderWriter):
             file_type: str = 'pkl',
             meta_file_type: str = 'json',
             meta_ext: str = 'meta',
+            progress=None,
     ):
         self.path = S3Location(path)
         self._file_type = file_type
         self._meta_file_type = meta_file_type
         self._meta_ext = meta_ext
+        self._progress = progress
 
     def key2path(self, key: str, meta=False) -> S3Location:
         if meta:
@@ -79,7 +81,7 @@ class S3ReaderWriter(CacheReaderWriter):
         file_type = file_type or self._file_type
         obj_path = self.key2path(key)
         print(f"Caching item '{key}' at {obj_path.s3_uri}")
-        s3.write_to_s3(obj, obj_path, file_type=file_type)
+        s3.write_to_s3(obj, obj_path, file_type=file_type, progress=self._progress)
 
         meta_path = self.key2path(key, meta=True)
         if meta is None:
