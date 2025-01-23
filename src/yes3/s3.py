@@ -357,16 +357,37 @@ def is_unmade_dir(path: os.PathLike) -> bool:
         return False
 
 
+def _parse_progress_arg(progress_arg) -> tuple[str, int | float]:
+    if isinstance(progress_arg, str):
+        progress_mode = S3_CONFIG.check_progress_mode(progress_arg)
+        progress_size = S3_CONFIG.progress_size
+    elif progress_arg is False:
+        progress_mode = S3_CONFIG.check_progress_mode('off')
+        progress_size = S3_CONFIG.progress_size
+    elif progress_arg is None:
+        progress_mode = S3_CONFIG.progress_mode
+        progress_size = S3_CONFIG.progress_size
+    else:
+        try:
+            progress_size = float(progress_arg)
+            progress_mode = S3_CONFIG.check_progress_mode('large')
+        except (ValueError, TypeError):
+            raise ValueError(f'Invalid progress arg value: {progress_arg}')
+
+    return progress_mode, progress_size
+
+
 def _get_upload_prog_callback(progress_arg, path: Path):
-    if progress_arg is False:
-        return
+    # Parse progress arg
     if callable(progress_arg):
         return progress_arg
-    if S3_CONFIG.progress_mode == 'off':
+    progress_mode, progress_size = _parse_progress_arg(progress_arg)
+
+    if progress_mode == 'off':
         return
 
     obj_size = path.stat().st_size
-    if S3_CONFIG.progress_mode == 'large' and obj_size < S3_CONFIG.progress_size:
+    if progress_mode == 'large' and obj_size < progress_size:
         return
 
     pbar = tqdm(total=obj_size, desc=f"Uploading {path.name}")
@@ -468,16 +489,16 @@ def upload(
 
 
 def _get_download_prog_callback(progress_arg, location: S3Location):
-    if progress_arg is False:
-        return
     if callable(progress_arg):
         return progress_arg
-    if S3_CONFIG.progress_mode == 'off':
+    progress_mode, progress_size = _parse_progress_arg(progress_arg)
+
+    if progress_mode == 'off':
         return
 
     obj_meta = list_objects(location, return_metadata=True)[0]
     obj_size = obj_meta.size
-    if S3_CONFIG.progress_mode == 'large' and obj_size < S3_CONFIG.progress_size:
+    if progress_mode == 'large' and obj_size < progress_size:
         return
 
     pbar = tqdm(total=obj_size, desc=f"Downloading {obj_meta.location.key.rsplit('/', 1)[-1]}")
