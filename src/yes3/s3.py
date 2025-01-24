@@ -16,15 +16,15 @@ import pandas as pd
 from tqdm import tqdm
 
 from .client import get_client as _get_client
-from .config import S3Config
+from .config import YeS3Config
 from .utils.decorators import timeit_opt
 
 _client = _get_client()
-global S3_CONFIG
+global YES3_CONFIG
 try:  # Don't want to overwrite the value of _VERBOSE if it has already been set
-    S3_CONFIG
+    YES3_CONFIG
 except NameError:
-    S3_CONFIG = S3Config()
+    YES3_CONFIG = YeS3Config()
 
 # TODO:
 #  1. Replace _verbose_print with logger
@@ -33,14 +33,14 @@ except NameError:
 
 
 def config(**config_params):
-    global S3_CONFIG
+    global YES3_CONFIG
     for param, value in config_params.items():
-        setattr(S3_CONFIG, param, value)
-    return S3_CONFIG
+        setattr(YES3_CONFIG, param, value)
+    return YES3_CONFIG
 
 
 def _verbose_print(*args, **kwargs):
-    if S3_CONFIG.verbose:
+    if YES3_CONFIG.verbose:
         print(*args, **kwargs)
 
 
@@ -90,7 +90,7 @@ class S3Location:
 
     @property
     def https_url(self, region=None) -> str:
-        region = region or (self.region or S3_CONFIG.default_region)
+        region = region or (self.region or YES3_CONFIG.default_region)
         s = f'https://s3.{region}.amazonaws.com/{quote(self.bucket)}'
         if self.key is not None:
             s += f'/{quote(self.key)}'
@@ -359,18 +359,18 @@ def is_unmade_dir(path: os.PathLike) -> bool:
 
 def _parse_progress_arg(progress_arg) -> tuple[str, int | float]:
     if isinstance(progress_arg, str):
-        progress_mode = S3_CONFIG.check_progress_mode(progress_arg)
-        progress_size = S3_CONFIG.progress_size
+        progress_mode = YES3_CONFIG.check_progress_mode(progress_arg)
+        progress_size = YES3_CONFIG.progress_size
     elif progress_arg is False:
-        progress_mode = S3_CONFIG.check_progress_mode('off')
-        progress_size = S3_CONFIG.progress_size
+        progress_mode = YES3_CONFIG.check_progress_mode('off')
+        progress_size = YES3_CONFIG.progress_size
     elif progress_arg is None:
-        progress_mode = S3_CONFIG.progress_mode
-        progress_size = S3_CONFIG.progress_size
+        progress_mode = YES3_CONFIG.progress_mode
+        progress_size = YES3_CONFIG.progress_size
     else:
         try:
             progress_size = float(progress_arg)
-            progress_mode = S3_CONFIG.check_progress_mode('large')
+            progress_mode = YES3_CONFIG.check_progress_mode('large')
         except (ValueError, TypeError):
             raise ValueError(f'Invalid progress arg value: {progress_arg}')
 

@@ -4,7 +4,7 @@ PROGRESS_MODES = {'off', 'all', 'large'}
 
 
 @dataclass
-class S3Config:
+class YeS3Config:
     default_region: str = 'us-east-2'
     verbose: bool = False
     progress_mode: str = 'large'
