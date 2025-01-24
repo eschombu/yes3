@@ -1,6 +1,7 @@
 from collections import defaultdict
 from typing import Iterator, Optional, Self
 
+from yes3 import S3Location
 from yes3.caching.base import CacheCore, CachedItemMeta, raise_not_found, UNSPECIFIED
 
 
@@ -106,7 +107,10 @@ class MultiCache(CacheCore):
             for i, cache in enumerate(self):
                 cache_key = f'Cache {i + 1}'
                 if hasattr(cache, 'path'):
-                    cache_key += f' ({cache.path})'
+                    if isinstance(cache.path, S3Location):
+                        cache_key += f' ({cache.path.s3_uri})'
+                    else:
+                        cache_key += f' ({cache.path})'
                 metadata[key][cache_key] = cache.get_meta(key).to_dict() if key in cache else None
         return dict(metadata)
 
