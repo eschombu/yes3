@@ -1,6 +1,4 @@
 import os
-import sys
-from datetime import datetime, UTC
 from functools import partial
 from pathlib import Path
 from typing import Optional, Self
@@ -53,21 +51,23 @@ class S3ReaderWriter(CacheReaderWriter):
         print(f"Reading cached item '{key}' at {path.s3_uri}")
         return s3.read(path, file_type=file_type)
 
-    def _build_meta(self, key: str, path, obj) -> CachedItemMeta:
+    def _build_meta(self, path, key=None) -> CachedItemMeta:
+        if key is None:
+            key = self.path2key(path)
         rel_path = Path(path.key).relative_to(Path(self.path.key))
+        obj_meta = path.get_object_metadata()
         return CachedItemMeta(
             key=key,
             path=str(rel_path),
-            size=sys.getsizeof(obj, -1),
-            timestamp=datetime.now(UTC).timestamp(),
+            size=obj_meta.size,
+            timestamp=obj_meta.last_modified,
         )
 
     def get_meta(self, key: str, rebuild=False, file_type=None) -> CachedItemMeta:
         if rebuild:
             obj_path = self.key2path(key)
             meta_path = self.key2path(key, meta=True)
-            obj = s3.read(obj_path, file_type=(file_type or self._file_type))
-            meta = self._build_meta(key, obj_path, obj)
+            meta = self._build_meta(path=obj_path, key=key)
             s3.write_to_s3(meta.to_dict(), meta_path, file_type=self._meta_file_type)
         else:
             meta_path = self.key2path(key, meta=True)
@@ -77,13 +77,13 @@ class S3ReaderWriter(CacheReaderWriter):
 
     def write(self, key: str, obj, meta: Optional[CachedItemMeta] = None, file_type=None) -> CachedItemMeta:
         file_type = file_type or self._file_type
-        path = self.key2path(key)
-        print(f"Caching item '{key}' at {path.s3_uri}")
-        s3.write_to_s3(obj, path, file_type=file_type)
+        obj_path = self.key2path(key)
+        print(f"Caching item '{key}' at {obj_path.s3_uri}")
+        s3.write_to_s3(obj, obj_path, file_type=file_type)
 
         meta_path = self.key2path(key, meta=True)
         if meta is None:
-            meta = self._build_meta(key, path, obj)
+            meta = self._build_meta(path=obj_path, key=key)
         s3.write_to_s3(meta.to_dict(), meta_path, file_type=self._meta_file_type)
         return meta
 

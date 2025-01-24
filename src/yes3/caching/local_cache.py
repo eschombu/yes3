@@ -1,7 +1,6 @@
 import json
 import os
 import pickle
-import sys
 from datetime import datetime, UTC
 from functools import partial
 from glob import glob
@@ -106,21 +105,23 @@ class LocalReaderWriter(CacheReaderWriter):
         print(f"Reading cached item '{key}' at {path}")
         return self.obj_serializer.read(path)
 
-    def _build_meta(self, key: str, path, obj) -> CachedItemMeta:
+    def _build_meta(self, path, key=None) -> CachedItemMeta:
+        if key is None:
+            key = self.path2key(path)
+        file_stat = os.stat(path)
         rel_path = path.relative_to(self.path)
         return CachedItemMeta(
             key=key,
             path=str(rel_path),
-            size=sys.getsizeof(obj, -1),
-            timestamp=datetime.now(UTC).timestamp(),
+            size=file_stat.st_size,
+            timestamp=datetime.fromtimestamp(file_stat.st_mtime, UTC),
         )
 
     def get_meta(self, key: str, rebuild=False) -> CachedItemMeta:
         if rebuild:
             obj_path = self.key2path(key)
             meta_path = self.key2path(key, meta=True)
-            obj = self.obj_serializer.read(obj_path)
-            meta = self._build_meta(key, obj_path, obj)
+            meta = self._build_meta(path=obj_path, key=key)
             self.meta_serializer.write(meta_path, meta)
         else:
             meta_path = self.key2path(key, meta=True)
@@ -128,13 +129,13 @@ class LocalReaderWriter(CacheReaderWriter):
         return meta
 
     def write(self, key: str, obj, meta: Optional[CachedItemMeta] = None) -> CachedItemMeta:
-        path = self.key2path(key)
-        print(f"Caching item '{key}' at {path}")
-        self.obj_serializer.write(path, obj)
+        obj_path = self.key2path(key)
+        print(f"Caching item '{key}' at {obj_path}")
+        self.obj_serializer.write(obj_path, obj)
 
         meta_path = self.key2path(key, meta=True)
         if meta is None:
-            meta = self._build_meta(key, path, obj)
+            meta = self._build_meta(path=obj_path, key=key)
         self.meta_serializer.write(meta_path, meta)
         return meta
 

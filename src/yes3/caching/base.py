@@ -1,6 +1,7 @@
 from abc import ABCMeta, abstractmethod
 from collections.abc import Callable
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
+from datetime import datetime, UTC
 from typing import Any, Iterator, Optional, Self
 
 
@@ -20,10 +21,23 @@ class CachedItemMeta:
     key: str
     path: Optional[str]
     size: Optional[int]
-    timestamp: Optional[float]
+    timestamp: Optional[datetime]
 
-    def to_dict(self):
-        return asdict(self)
+    _ts_format = '%Y-%m-%d %H:%M:%S.%f %z'
+
+    def __post_init__(self):
+        if isinstance(self.timestamp, float):
+            self.timestamp = datetime.fromtimestamp(self.timestamp, UTC)
+        if isinstance(self.timestamp, str):
+            self.timestamp = datetime.strptime(self.timestamp, self._ts_format)
+
+    def to_dict(self) -> dict:
+        return {
+            'key': self.key,
+            'path': self.path,
+            'size': self.size,
+            'timestamp': self.timestamp.strftime(self._ts_format)
+        }
 
 
 class CacheCore(metaclass=ABCMeta):

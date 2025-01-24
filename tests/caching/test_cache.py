@@ -2,7 +2,9 @@ import os.path
 import shutil
 import unittest
 from pathlib import Path
+from time import sleep
 
+import numpy as np
 from moto import mock_aws
 
 from yes3 import s3, S3Location
@@ -34,8 +36,7 @@ def _cleanup_local():
 
 
 data = {'i': 42, 's': 'hello world'}
-updated_data = data.copy()
-updated_data['i'] = 43
+updated_data = list(range(10000))
 key = 'test_data'
 local_obj_path = TEST_LOCAL_DIR / (key + '.pkl')
 local_meta_path = TEST_LOCAL_DIR / (key + '.meta')
@@ -85,29 +86,30 @@ class TestLocalDiskCache(unittest.TestCase):
         self.assertEqual(retrieved, data)
 
     def _test_updating_data(self, cache: CacheCore):
-        def check_meta(current: CachedItemMeta, new: CachedItemMeta):
-            self.assertEqual(current.key, new.key)
-            self.assertEqual(current.size, new.size)
-            self.assertEqual(current.path, new.path)
-            self.assertTrue((current.timestamp != new.timestamp)
-                            or (current.timestamp is None and new.timestamp is None))
-
         with self.assertRaises(ValueError):
             cache.put(key, updated_data)
         start_meta = cache.get_meta(key)
+        if isinstance(cache, S3Cache):
+            sleep(1)  # S3 object timestamp only has precision to nearest second
         cache.update(key, updated_data)
         retrieved = cache.get(key)
         new_meta = cache.get_meta(key)
         self.assertEqual(retrieved, updated_data)
         self.assertNotEqual(retrieved, data)
-        check_meta(start_meta, new_meta)
+        self.assertEqual(start_meta.key, new_meta.key)
+        self.assertNotEqual(start_meta.size, new_meta.size)
+        self.assertEqual(start_meta.path, new_meta.path)
+        self.assertNotEqual(start_meta.timestamp, new_meta.timestamp)
 
         cache.put(key, data, update=True)
         retrieved = cache.get(key)
         new_new_meta = cache.get_meta(key)
         self.assertEqual(retrieved, data)
         self.assertNotEqual(retrieved, updated_data)
-        check_meta(start_meta, new_new_meta)
+        self.assertEqual(start_meta.key, new_new_meta.key)
+        self.assertEqual(start_meta.size, new_new_meta.size)
+        self.assertEqual(start_meta.path, new_new_meta.path)
+        self.assertNotEqual(start_meta.timestamp, new_new_meta.timestamp)
 
     def _test_removing_data(self, cache: CacheCore):
         cache.remove(key)
@@ -165,6 +167,7 @@ class TestLocalDiskCache(unittest.TestCase):
         self._check_paths_exists(cache, True)
         meta = cache.get_meta(key)
         rm_fun(meta_path)
+        self.assertFalse(meta_path.exists())
         with self.assertRaises(RuntimeError):
             new_cache = CacheType.create(cache_dir)
         new_cache = CacheType.create(cache_dir, rebuild_missing_meta=True)
@@ -173,7 +176,7 @@ class TestLocalDiskCache(unittest.TestCase):
         self.assertEqual(new_meta.key, meta.key)
         self.assertEqual(new_meta.size, meta.size)
         self.assertEqual(new_meta.path, meta.path)
-        self.assertGreater(new_meta.timestamp, meta.timestamp)
+        self.assertEqual(new_meta.timestamp, meta.timestamp)
 
     def _run_local_tests(self, cache: LocalDiskCache):
         self._test_cache_state(cache)
