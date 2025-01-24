@@ -7,6 +7,7 @@ from typing import List
 from moto import mock_aws
 
 from yes3 import s3, S3Location
+from yes3.s3 import S3Object
 from yes3.utils.testing import get_arg_parser, run_tests
 
 TEST_LOCAL_DIR = Path('_tmp_test_dir_')
@@ -96,11 +97,17 @@ def _test_recursive_uploads():
 
 
 def _test_list_objects():
-    dir12_locs = s3.list_objects(TEST_S3_DIR, 'dir1/dir1.2')
+    dir12 = s3.S3Location(TEST_S3_DIR).join('dir1/dir1.2')
+    dir12_locs = s3.list_objects(dir12, return_metadata=False)
     for obj in dir12_locs:
         _vprint(f'Found S3 object: {obj}')
     assert len(dir12_locs) == 2
     assert set(loc.split_key()[1] for loc in dir12_locs) == {'file2.1', 'file2.2'}
+
+    dir12_objs = s3.list_objects(dir12, return_metadata=True)
+    assert len(dir12_objs) == 2
+    assert all(isinstance(obj, S3Object) for obj in dir12_objs)
+    assert isinstance(dir12_objs[0].location.get_object_metadata(), S3Object)
 
 
 def _test_list_dir():

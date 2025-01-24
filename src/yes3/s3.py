@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from glob import glob
 from pathlib import Path
-from typing import Iterable, Optional, Self
+from typing import Iterable, List, Optional, Self
 from urllib.parse import quote, unquote, urlparse
 
 import numpy as np
@@ -163,6 +163,13 @@ class S3Location:
         if not parent_key:
             parent_key = None
         return type(self)(self.bucket, parent_key, self.region)
+
+    def get_object_metadata(self) -> 'S3Object' | List['S3Object']:
+        objects = list_objects(self, return_metadata=True)
+        if self.is_object():
+            return objects[0]
+        else:
+            return objects
 
     def __truediv__(self, other):
         return self.join(other)
