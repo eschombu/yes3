@@ -123,7 +123,7 @@ class CacheReaderWriter(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def delete(self, key: str):
+    def delete(self, key: str, meta_only=False):
         pass
 
 
@@ -236,13 +236,16 @@ class Cache(CacheCore, metaclass=ABCMeta):
             raise_not_found(key)
         self.put(key, obj, update=True)
 
-    def remove(self, key: str) -> Self:
+    def remove(self, key: str, meta_only=False) -> Self:
         if self.is_active() and key in self:
             if self.is_read_only():
                 raise TypeError('Cache is in read only mode')
             self._catalog.remove(key)
-            self._reader_writer.delete(key)
+            self._reader_writer.delete(key, meta_only=meta_only)
         return self
+
+    def remove_meta(self, key: str) -> Self:
+        return self.remove(key, meta_only=True)
 
     def keys(self) -> list[str]:
         if not self.is_active():

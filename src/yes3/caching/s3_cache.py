@@ -89,11 +89,14 @@ class S3ReaderWriter(CacheReaderWriter):
         s3.write_to_s3(meta.to_dict(), meta_path, file_type=self._meta_file_type)
         return meta
 
-    def delete(self, key: str):
+    def delete(self, key: str, meta_only=False):
         path = self.key2path(key)
         meta_path = self.key2path(key, meta=True)
-        print(f"Deleting cached item '{key}' at {path.s3_uri}")
-        s3.delete(path)
+        if meta_only:
+            print(f"Deleting cached item '{key}' metadata at {meta_path.s3_uri}")
+        else:
+            print(f"Deleting cached item '{key}' at {path.s3_uri}")
+            s3.delete(path)
         s3.delete(meta_path)
 
 
@@ -161,6 +164,15 @@ class S3Cache(Cache):
                 self.remove(key)
             new_cache = type(self).create(self.path, reader_writer=self._reader_writer)
             self.__init__(new_cache._catalog, new_cache._reader_writer, active=self._active, read_only=self._read_only)
+        return self
+
+    def clear_meta(self, force=False) -> Self:
+        if self.is_active() and len(self.keys()) > 0:
+            if not force:
+                raise RuntimeError(f'Clearing this cache metadata ({self.path.s3_uri}) requires specifying force=True')
+            print(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
+            for key in self.keys():
+                self.remove(key, meta_only=True)
         return self
 
     def _repr_params(self) -> list[str]:

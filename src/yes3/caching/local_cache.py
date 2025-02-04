@@ -139,11 +139,14 @@ class LocalReaderWriter(CacheReaderWriter):
         self.meta_serializer.write(meta_path, meta)
         return meta
 
-    def delete(self, key: str):
+    def delete(self, key: str, meta_only=False):
         path = self.key2path(key)
         meta_path = self.key2path(key, meta=True)
-        print(f"Deleting cached item '{key}' at {path}")
-        os.remove(path)
+        if meta_only:
+            print(f"Deleting cached item '{key}' metadata at {meta_path}")
+        else:
+            print(f"Deleting cached item '{key}' at {path}")
+            os.remove(path)
         os.remove(meta_path)
 
 
@@ -205,6 +208,15 @@ class LocalDiskCache(Cache):
                 self.remove(key)
             new_cache = type(self).create(self.path, reader_writer=self._reader_writer)
             self.__init__(new_cache._catalog, new_cache._reader_writer, active=self._active, read_only=self._read_only)
+        return self
+
+    def clear_meta(self, force=False) -> Self:
+        if self.is_active() and len(self.keys()) > 0:
+            if not force:
+                raise RuntimeError(f'Clearing this cache metadata ({self.path}) requires specifying force=True')
+            print(f'Deleting {len(self.keys())} item(s) from cache at {self.path}')
+            for key in self.keys():
+                self.remove(key, meta_only=True)
         return self
 
     def _repr_params(self) -> list[str]:
