@@ -2,7 +2,7 @@ from abc import ABCMeta, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, UTC
-from typing import Any, Iterator, Optional, Self
+from typing import Any, Iterable, Iterator, Optional, Self
 
 
 class _UnspecifiedParamType:
@@ -266,6 +266,26 @@ class Cache(CacheCore, metaclass=ABCMeta):
 
     def __repr__(self):
         return f"{type(self).__name__}({', '.join(self._repr_params())})"
+
+
+def check_meta_mismatches(caches: Iterable[CacheCore], key=None) -> dict[str, tuple[CachedItemMeta, ...]]:
+    if key is not None and not isinstance(key, str):
+        raise TypeError('key is not a string')
+    for cache in caches:
+        if not isinstance(cache, CacheCore):
+            raise TypeError('caches must be an iterable containing Cache instances')
+    mismatches = {}
+    if key is None:
+        keys = set(k for cache in caches for k in cache.keys())
+    else:
+        keys = [key]
+    for k in keys:
+        metas = [cache.get_meta(k) for cache in caches if k in cache]
+        if len(metas) > 1:
+            first_meta = metas[0]
+            if any(meta != first_meta for meta in metas[1:]):
+                mismatches[k] = tuple(metas)
+    return mismatches
 
 
 class Serializer(metaclass=ABCMeta):

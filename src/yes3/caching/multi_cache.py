@@ -2,7 +2,7 @@ from collections import defaultdict
 from typing import Iterator, Optional, Self
 
 from yes3 import S3Location
-from yes3.caching.base import CacheCore, CachedItemMeta, raise_not_found, UNSPECIFIED
+from yes3.caching.base import CacheCore, CachedItemMeta, check_meta_mismatches, raise_not_found, UNSPECIFIED
 
 
 class MultiCache(CacheCore):
@@ -88,18 +88,7 @@ class MultiCache(CacheCore):
         return meta
 
     def check_meta_mismatches(self, key=None) -> dict[str, tuple[CachedItemMeta, ...]]:
-        mismatches = {}
-        if key is None:
-            keys = self.keys()
-        else:
-            keys = [key]
-        for key in keys:
-            metas = [cache.get_meta(key) for cache in self if key in cache]
-            if len(metas) > 1:
-                first_meta = metas[0]
-                if any(meta != first_meta for meta in metas[1:]):
-                    mismatches[key] = tuple(metas)
-        return mismatches
+        return check_meta_mismatches(self._caches, key=key)
 
     def compare_all_metadata(self) -> dict[str, dict[str, dict]]:
         metadata = defaultdict(dict)

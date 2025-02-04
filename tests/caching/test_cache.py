@@ -4,11 +4,10 @@ import unittest
 from pathlib import Path
 from time import sleep
 
-import numpy as np
 from moto import mock_aws
 
 from yes3 import s3, S3Location
-from yes3.caching import CacheCore, CachedItemMeta, LocalDiskCache, MultiCache, S3Cache
+from yes3.caching import CacheCore, LocalDiskCache, MultiCache, S3Cache
 from yes3.utils.testing import get_arg_parser, run_tests
 
 TEST_LOCAL_DIR = Path('_tmp_cache_test_dir_')
