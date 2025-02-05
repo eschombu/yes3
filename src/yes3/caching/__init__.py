@@ -2,3 +2,4 @@ from .base import Cache, CacheCore, CachedItemMeta, Serializer, check_meta_misma
 from .local_cache import LocalDiskCache
 from .multi_cache import MultiCache
 from .s3_cache import S3Cache
+from .setup_helpers import setup_cache
