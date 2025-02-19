@@ -36,7 +36,7 @@ class CachedItemMeta:
             'key': self.key,
             'path': self.path,
             'size': self.size,
-            'timestamp': self.timestamp.strftime(self._ts_format)
+            'timestamp': self.timestamp.strftime(self._ts_format) if self.timestamp else None,
         }
 
 
@@ -63,10 +63,6 @@ class CacheCore(metaclass=ABCMeta):
 
     @abstractmethod
     def remove(self, key):
-        pass
-
-    @abstractmethod
-    def update(self, key, obj):
         pass
 
     @abstractmethod
@@ -100,8 +96,10 @@ class CacheCore(metaclass=ABCMeta):
         self._read_only = value
         return self
 
-    def subcache(self, *args, **kwargs) -> Self:
-        raise NotImplementedError(f"`subcache` method is not defined for class {type(self).__name__}")
+    def update(self, key: str, obj):
+        if key not in self:
+            raise_not_found(key)
+        self.put(key, obj, update=True)
 
     def pop(self, key: str, default=UNSPECIFIED):
         obj = self.get(key, default=default)
@@ -113,6 +111,9 @@ class CacheCore(metaclass=ABCMeta):
         for key in self.keys():
             items_meta[key] = self.get_meta(key)
         return items_meta
+
+    def subcache(self, *args, **kwargs) -> Self:
+        raise NotImplementedError(f"`subcache` method is not defined for class {type(self).__name__}")
 
 
 class CacheReaderWriter(metaclass=ABCMeta):
@@ -237,11 +238,6 @@ class Cache(CacheCore, metaclass=ABCMeta):
             self._catalog.add(key, meta)
         return self
 
-    def update(self, key: str, obj):
-        if key not in self:
-            raise_not_found(key)
-        self.put(key, obj, update=True)
-
     def remove(self, key: str, meta_only=False) -> Self:
         if self.is_active() and key in self:
             if self.is_read_only():
@@ -258,12 +254,6 @@ class Cache(CacheCore, metaclass=ABCMeta):
             return []
         else:
             return list(self._catalog.keys())
-
-    def items(self) -> Iterator[tuple[str, Any]]:
-        if not self.is_active():
-            return iter([])
-        else:
-            return self._catalog.items()
 
     def _repr_params(self) -> list[str]:
         params = [f'{len(self.keys())} items']

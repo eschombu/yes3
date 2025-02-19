@@ -116,22 +116,11 @@ class MultiCache(CacheCore):
                 break
         return self
 
-    def update(self, key: str, obj) -> Self:
-        if key not in self:
-            raise_not_found(key)
-        return self.put(key, obj, update=True)
-
     def remove(self, key) -> Self:
         for cache in self:
             if key in cache:
                 cache.remove(key)
         return self
-
-    def pop(self, key, default=UNSPECIFIED):
-        item = self.get(key, default=default)
-        if key in self:
-            self.remove(key)
-        return item
 
     def keys(self) -> list[str]:
         if not self.is_active():
