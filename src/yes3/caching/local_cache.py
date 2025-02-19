@@ -202,7 +202,7 @@ class LocalDiskCache(Cache):
     def clear(self, force=False) -> Self:
         if self.is_active() and len(self.keys()) > 0:
             if not force:
-                raise RuntimeError(f'Clearing this cache ({self.path}) requires specifying force=True')
+                raise RuntimeError(f'Clearing this {type(self).__name__} ({self.path}) requires specifying force=True')
             print(f'Deleting {len(self.keys())} item(s) from cache at {self.path}')
             for key in self.keys():
                 self.remove(key)
@@ -213,7 +213,8 @@ class LocalDiskCache(Cache):
     def clear_meta(self, force=False) -> Self:
         if self.is_active() and len(self.keys()) > 0:
             if not force:
-                raise RuntimeError(f'Clearing this cache metadata ({self.path}) requires specifying force=True')
+                raise RuntimeError(f'Clearing this {type(self).__name__} metadata ({self.path}) requires specifying '
+                                   'force=True')
             print(f'Deleting {len(self.keys())} item(s) from cache at {self.path}')
             for key in self.keys():
                 self.remove(key, meta_only=True)

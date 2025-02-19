@@ -36,6 +36,12 @@ class MultiCache(CacheCore):
     def is_read_only(self) -> bool:
         return super().is_read_only() or all(cache.is_read_only() for cache in self)
 
+    def set_read_only(self, value: bool) -> Self:
+        super().set_read_only(value)
+        for cache in self:
+            cache.set_read_only(value)
+        return self
+
     def add_cache(self, cache: CacheCore, index=-1) -> Self:
         if index is not None and index >= 0:
             self._caches.insert(index, cache)
@@ -104,6 +110,11 @@ class MultiCache(CacheCore):
         return dict(metadata)
 
     def put(self, key: str, obj, *, update=False, meta: Optional[CachedItemMeta] = None) -> Self:
+        if self.is_read_only():
+            raise TypeError('Cache is in read only mode')
+        if not self.is_active():
+            print(f"WARNING: {type(self).__name__} is not active")
+            return self
         for cache in self:
             if cache.is_read_only():
                 continue
@@ -117,9 +128,12 @@ class MultiCache(CacheCore):
         return self
 
     def remove(self, key) -> Self:
-        for cache in self:
-            if key in cache:
-                cache.remove(key)
+        if self.is_active():
+            for cache in self:
+                if key in cache:
+                    cache.remove(key)
+        else:
+            print(f"WARNING: {type(self).__name__} is not active")
         return self
 
     def keys(self) -> list[str]:

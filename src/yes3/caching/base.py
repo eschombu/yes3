@@ -236,6 +236,8 @@ class Cache(CacheCore, metaclass=ABCMeta):
                 raise ValueError(f"key '{key}' already exists in cache; use 'update' to overwrite")
             meta = self._reader_writer.write(key, obj, meta=meta)
             self._catalog.add(key, meta)
+        else:
+            print(f'WARNING: {type(self).__name__} is not active')
         return self
 
     def remove(self, key: str, meta_only=False) -> Self:
@@ -260,7 +262,7 @@ class Cache(CacheCore, metaclass=ABCMeta):
         if not self.is_active():
             params.append('NOT ACTIVE')
         if self.is_read_only():
-            params.append('READ-ONLY')
+            params.append('READ ONLY')
         return params
 
     def __repr__(self):
