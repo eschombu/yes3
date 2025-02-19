@@ -73,11 +73,6 @@ class CacheCore(metaclass=ABCMeta):
     def keys(self):
         pass
 
-    def pop(self, key: str, default=UNSPECIFIED):
-        obj = self.get(key, default=default)
-        self.remove(key)
-        return obj
-
     def __getitem__(self, key: str):
         return self.get(key)
 
@@ -107,6 +102,17 @@ class CacheCore(metaclass=ABCMeta):
 
     def subcache(self, *args, **kwargs) -> Self:
         raise NotImplementedError(f"`subcache` method is not defined for class {type(self).__name__}")
+
+    def pop(self, key: str, default=UNSPECIFIED):
+        obj = self.get(key, default=default)
+        self.remove(key)
+        return obj
+
+    def list(self) -> dict[str, CachedItemMeta]:
+        items_meta = {}
+        for key in self.keys():
+            items_meta[key] = self.get_meta(key)
+        return items_meta
 
 
 class CacheReaderWriter(metaclass=ABCMeta):
