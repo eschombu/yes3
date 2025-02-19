@@ -7,7 +7,7 @@ from time import sleep
 from moto import mock_aws
 
 from yes3 import s3, S3Location
-from yes3.caching import CacheCore, LocalDiskCache, MultiCache, S3Cache
+from yes3.caching import CacheCore, LocalDiskCache, MemoryCache, MultiCache, S3Cache
 from yes3.utils.testing import get_arg_parser, run_tests
 
 TEST_LOCAL_DIR = Path('_tmp_cache_test_dir_')
@@ -43,7 +43,7 @@ s3_obj_loc = S3Location(TEST_S3_DIR).join(key)
 s3_meta_loc = S3Location(TEST_S3_DIR).join(key + '.meta')
 
 
-class TestLocalDiskCache(unittest.TestCase):
+class TestCaches(unittest.TestCase):
     def _check_paths_exists(self, cache, expect_exists: bool):
         if isinstance(cache, MultiCache):
             for c in cache:
@@ -51,16 +51,23 @@ class TestLocalDiskCache(unittest.TestCase):
                 self.assertIs(path.exists(), expect_exists)
                 meta_path = s3_meta_loc if isinstance(c.path, S3Location) else local_meta_path
                 self.assertIs(meta_path.exists(), expect_exists)
-        else:
+        elif not isinstance(cache, MemoryCache):
             path = s3_obj_loc if isinstance(cache.path, S3Location) else local_obj_path
             self.assertIs(path.exists(), expect_exists)
             meta_path = s3_meta_loc if isinstance(cache.path, S3Location) else local_meta_path
             self.assertIs(meta_path.exists(), expect_exists)
 
     def _test_cache_state(self, cache: CacheCore):
+        cache.deactivate()
         self.assertFalse(cache.is_active())
+        cache.put(key, data)
+        self.assertFalse(key in cache)
         cache.activate()
         self.assertTrue(cache.is_active())
+        cache.set_read_only(True)
+        with self.assertRaises(TypeError):
+            _ = cache.put(key, data)
+        cache.set_read_only(False)
 
     def _test_missing_data(self, cache: CacheCore):
         self.assertFalse(key in cache)
@@ -96,8 +103,14 @@ class TestLocalDiskCache(unittest.TestCase):
         self.assertEqual(retrieved, updated_data)
         self.assertNotEqual(retrieved, data)
         self.assertEqual(start_meta.key, new_meta.key)
-        self.assertNotEqual(start_meta.size, new_meta.size)
-        self.assertEqual(start_meta.path, new_meta.path)
+        if start_meta.size is None:
+            self.assertIsNone(new_meta.size)
+        else:
+            self.assertNotEqual(start_meta.size, new_meta.size)
+        if start_meta.path is None:
+            self.assertIsNone(new_meta.path)
+        else:
+            self.assertEqual(start_meta.path, new_meta.path)
         self.assertNotEqual(start_meta.timestamp, new_meta.timestamp)
 
         cache.put(key, data, update=True)
@@ -188,8 +201,24 @@ class TestLocalDiskCache(unittest.TestCase):
         self._test_clearing_local_cache(cache)
 
     def _test_local_cache(self):
-        cache = LocalDiskCache.create(TEST_LOCAL_DIR, active=False)
+        cache = LocalDiskCache.create(TEST_LOCAL_DIR)
         self._run_local_tests(cache)
+
+    def _test_clearing_memory_cache(self, cache: MemoryCache):
+        cache.clear()
+        self.assertEqual(len(cache.keys()), 0)
+
+    def _run_memory_tests(self, cache: MemoryCache):
+        self._test_cache_state(cache)
+        self._test_missing_data(cache)
+        self._test_adding_data(cache)
+        self._test_updating_data(cache)
+        self._test_removing_data(cache)
+        self._test_clearing_memory_cache(cache)
+
+    def _test_memory_cache(self):
+        cache = MemoryCache()
+        self._run_memory_tests(cache)
 
     def _test_initializing_s3_cache_with_data(self, cache: S3Cache):
         cache.put(key, data)
@@ -229,7 +258,7 @@ class TestLocalDiskCache(unittest.TestCase):
     def _test_s3_cache(self):
         # moto (aws mock) requires the bucket be created before use
         s3._client.create_bucket(Bucket=TEST_BUCKET)
-        cache = S3Cache.create(TEST_S3_DIR, active=False)
+        cache = S3Cache.create(TEST_S3_DIR)
         self._run_s3_tests(cache)
 
     def _test_multi_cache_sync(self, cache: MultiCache):
@@ -258,13 +287,14 @@ class TestLocalDiskCache(unittest.TestCase):
     def _test_multi_cache(self):
         # moto (aws mock) requires the bucket be created before use
         s3._client.create_bucket(Bucket=TEST_BUCKET)
-        local_cache = LocalDiskCache.create(TEST_LOCAL_DIR, active=False)
-        s3_cache = S3Cache.create(TEST_S3_DIR, active=False)
+        local_cache = LocalDiskCache.create(TEST_LOCAL_DIR)
+        s3_cache = S3Cache.create(TEST_S3_DIR)
         multi_cache = MultiCache([local_cache, s3_cache], sync_all=True)
         self._run_multi_tests(multi_cache)
 
     def test_all_tests(self):
         try:
+            self._test_memory_cache()
             self._test_local_cache()
             self._test_s3_cache()
             self._test_multi_cache()
@@ -279,4 +309,4 @@ if __name__ == '__main__':
     args = arg_parser.parse_args()
     if args.verbose:
         VERBOSE = True
-    run_tests(args, TestLocalDiskCache)
+    run_tests(args, TestCaches)
