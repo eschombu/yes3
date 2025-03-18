@@ -76,7 +76,10 @@ def _with_ext(path, ext: Optional[str]):
     if path_str.endswith(ext):
         return path
     else:
-        return type(path)(path_str + ext)
+        try:
+            return type(path)(path_str + ext)
+        except (ValueError, TypeError):
+            return Path(path_str + ext)
 
 
 class LocalReaderWriter(CacheReaderWriter):

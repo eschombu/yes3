@@ -181,16 +181,16 @@ class CacheDictCatalog(CacheCatalog):
         self._catalog = self._build_catalog().copy()
 
     def contains(self, key: str):
-        return key in self._catalog
+        return str(key) in self._catalog
 
     def add(self, key: str, meta: CachedItemMeta):
-        self._catalog[key] = meta
+        self._catalog[str(key)] = meta
 
     def get(self, key: str) -> CachedItemMeta:
-        return self._catalog[key]
+        return self._catalog[str(key)]
 
     def remove(self, key: str):
-        self._catalog.pop(key)
+        self._catalog.pop(str(key))
 
     def keys(self):
         return list(self._catalog.keys())
