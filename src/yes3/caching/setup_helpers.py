@@ -30,7 +30,11 @@ def setup_cache(*paths, in_memory=False, sync=False, rebuild_missing_metadata=Fa
         caches.append(setup_single_cache(in_memory=in_memory))
     for path in paths:
         if path is not None:
-            caches.append(setup_single_cache(path, rebuild_missing_metadata=rebuild_missing_metadata))
+            if not (isinstance(path, str) or isinstance(path, CacheCore)) and hasattr(path, '__len__'):
+                for p in path:
+                    caches.append(setup_single_cache(p, rebuild_missing_metadata=rebuild_missing_metadata))
+            else:
+                caches.append(setup_single_cache(path, rebuild_missing_metadata=rebuild_missing_metadata))
     if len(caches) == 0:
         return None
     elif len(caches) == 1:
