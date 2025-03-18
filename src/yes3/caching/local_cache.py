@@ -92,6 +92,9 @@ class LocalReaderWriter(CacheReaderWriter):
         self.obj_serializer = _get_serializer(object_serializer)
         self.meta_serializer = _get_serializer(meta_serializer)
 
+    def clone(self, path: str | Path) -> Self:
+        return type(self)(path, object_serializer=self.obj_serializer, meta_serializer=self.meta_serializer)
+
     def key2path(self, key: str, meta=False) -> Path:
         if meta:
             return self.path / _with_ext(key, self.meta_serializer.ext)
@@ -188,6 +191,10 @@ class LocalDiskCache(Cache):
     ):
         if reader_writer is None:
             reader_writer = LocalReaderWriter(path, obj_serializer, meta_serializer)
+        elif not isinstance(reader_writer, LocalReaderWriter):
+            raise TypeError(f'`reader_writer` must be a {LocalReaderWriter.__name__} instance')
+        elif reader_writer.path != path:
+            reader_writer = reader_writer.clone(path)
         catalog_builder = partial(cls._build_catalog_dict, reader_writer=reader_writer,
                                   rebuild_missing_meta=rebuild_missing_meta)
         catalog = CacheDictCatalog(catalog_builder=catalog_builder)
