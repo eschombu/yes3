@@ -293,7 +293,7 @@ def list_dir(
         count_only: bool = False,
 ) -> list[S3Location | S3Object | S3Prefix] | int:
     location = as_s3_location(bucket_or_location, prefix)
-    if location.is_dir() and not location.is_bucket():
+    if location.is_dir():
         location = location.join('')
 
     paginator = _client.get_paginator('list_objects_v2')
