@@ -1,7 +1,7 @@
 from datetime import datetime, UTC
 from typing import Any, Optional, Self
 
-from yes3.caching.base import CacheCore, CachedItemMeta, raise_not_found, UNSPECIFIED
+from yes3.caching.base import CacheCore, CachedItemMeta, raise_not_found, _NotSpecified
 
 
 class MemoryCache(CacheCore):
@@ -18,9 +18,9 @@ class MemoryCache(CacheCore):
             raise RuntimeError(f"data exists, but no metadata found, for key '{key}' in {type(self).__name__}")
         return found
 
-    def get(self, key: str, default=UNSPECIFIED):
+    def get(self, key: str, default=_NotSpecified):
         if not self.is_active() or key not in self:
-            if default is UNSPECIFIED:
+            if default is _NotSpecified:
                 raise_not_found(key)
             else:
                 return default

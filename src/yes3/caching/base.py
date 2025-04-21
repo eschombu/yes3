@@ -4,12 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, UTC
 from typing import Iterable, Iterator, Optional, Self
 
-
-class _UnspecifiedParamType:
-    pass
-
-
-UNSPECIFIED = _UnspecifiedParamType()
+_NotSpecified = object()
 
 
 def raise_not_found(key) -> KeyError:
@@ -50,7 +45,7 @@ class CacheCore(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def get(self, key, default=UNSPECIFIED):
+    def get(self, key, default=_NotSpecified):
         pass
 
     @abstractmethod
@@ -101,7 +96,7 @@ class CacheCore(metaclass=ABCMeta):
             raise_not_found(key)
         self.put(key, obj, update=True)
 
-    def pop(self, key: str, default=UNSPECIFIED):
+    def pop(self, key: str, default=_NotSpecified):
         obj = self.get(key, default=default)
         self.remove(key)
         return obj
@@ -215,9 +210,9 @@ class Cache(CacheCore, metaclass=ABCMeta):
             return False
         return self._catalog.contains(key)
 
-    def get(self, key: str, default=UNSPECIFIED):
+    def get(self, key: str, default=_NotSpecified):
         if not self.is_active() or key not in self:
-            if default is UNSPECIFIED:
+            if default is _NotSpecified:
                 raise_not_found(key)
             else:
                 return default
