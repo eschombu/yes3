@@ -2,7 +2,7 @@ from collections import defaultdict
 from typing import Iterator, Optional, Self
 
 from yes3 import S3Location
-from yes3.caching.base import CacheCore, CachedItemMeta, check_meta_mismatches, raise_not_found, UNSPECIFIED
+from yes3.caching.base import CacheCore, CachedItemMeta, check_meta_mismatches, raise_not_found, _NotSpecified
 
 
 class MultiCache(CacheCore):
@@ -59,16 +59,16 @@ class MultiCache(CacheCore):
                 return True
         return False
 
-    def get(self, key: str, default=UNSPECIFIED, sync=None):
+    def get(self, key: str, default=_NotSpecified, sync=None):
         if sync is None:
             sync = self._sync_all
-        result = UNSPECIFIED
+        result = _NotSpecified
         for cache in self:
             if key in cache:
                 result = cache.get(key)
                 break
-        if result is UNSPECIFIED:
-            if default is UNSPECIFIED:
+        if result is _NotSpecified:
+            if default is _NotSpecified:
                 raise_not_found(key)
             else:
                 result = default
