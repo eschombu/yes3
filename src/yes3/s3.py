@@ -20,8 +20,10 @@ from .config import YeS3Config
 from .utils.decorators import timeit_opt
 
 _client = _get_client()
-global YES3_CONFIG
-try:  # Don't want to overwrite the value of _VERBOSE if it has already been set
+
+# Don't overwrite the value of YES3_CONFIG if it has already been set
+global YES3_CONFIG  # noqa: F824
+try:
     YES3_CONFIG
 except NameError:
     YES3_CONFIG = YeS3Config()
@@ -29,7 +31,7 @@ except NameError:
 # TODO:
 #  1. Replace _verbose_print with logger
 #  2. Add overwrite protection options
-#  4. Add some more shortcut methods to S3Location, perhaps some aliases
+#  3. Add some more shortcut methods to S3Location, perhaps some aliases
 
 
 def config(**config_params):
