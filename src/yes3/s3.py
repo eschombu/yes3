@@ -115,12 +115,10 @@ class S3Location:
 
     def join(self, *parts) -> Self:
         key_parts = self.key.split('/') if self.key else []
-        if len(parts) == 1 and isinstance(parts[0], S3Location):
-            parts = parts[0].key.split('/')
-        elif len(parts) > 1 and not all(isinstance(p, str) for p in parts):
-            raise TypeError('If multiple arguments passed to `join`, they must all be strings.')
+        if any(not isinstance(part, str) or is_s3_url(part) for part in parts):
+            raise TypeError('All arguments to `join` must be non-url strings.')
         for part in parts:
-            key_parts += str(part).split('/')
+            key_parts += part.split('/')
         new_key = '/'.join(key_parts)
         while '//' in new_key:
             new_key = new_key.replace('//', '/')
