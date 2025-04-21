@@ -2,7 +2,7 @@ from abc import ABCMeta, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, UTC
-from typing import Any, Iterable, Iterator, Optional, Self
+from typing import Iterable, Iterator, Optional, Self
 
 
 class _UnspecifiedParamType:
