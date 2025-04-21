@@ -114,7 +114,7 @@ class S3Location:
         return cls(bucket=bucket, key=key, region=region)
 
     def join(self, *parts) -> Self:
-        key_parts = self.key.split('/')
+        key_parts = self.key.split('/') if self.key else []
         if len(parts) == 1 and isinstance(parts[0], S3Location):
             parts = parts[0].key.split('/')
         elif len(parts) > 1 and not all(isinstance(p, str) for p in parts):
