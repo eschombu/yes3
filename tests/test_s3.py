@@ -217,7 +217,8 @@ class TestS3Utils(unittest.TestCase):
         # The following should not be sensitive to the forward slash at the end
         self.assertEqual(S3Location(f's3://{TEST_BUCKET}/').split_key(), ('', ''))
         self.assertEqual(S3Location(f's3://{TEST_BUCKET}/'), f's3://{TEST_BUCKET}')
-        self.assertEqual(S3Location(f's3://{TEST_BUCKET}/dir/subdir/').join(''), f's3://{TEST_BUCKET}/dir/subdir')
+        self.assertEqual(S3Location(f's3://{TEST_BUCKET}/dir/subdir/').join(''),
+                         f's3://{TEST_BUCKET}/dir/subdir')
 
     @mock_aws
     def test_read_write_ops(self):

@@ -35,7 +35,7 @@ except NameError:
 
 
 def config(**config_params):
-    global YES3_CONFIG
+    global YES3_CONFIG  # noqa: F824
     for param, value in config_params.items():
         setattr(YES3_CONFIG, param, value)
     return YES3_CONFIG
