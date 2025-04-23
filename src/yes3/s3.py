@@ -750,7 +750,7 @@ def list_many_objects(bucket_or_location: S3LocationLike, prefix: Optional[str] 
         cmd = ("aws s3api list-objects-v2 --bucket {bucket} --prefix {prefix} --output text --query 'Contents[].[Key]'"
                ).format(bucket=location.bucket, prefix=location.key)
     if timeit:
-        print(f'Starting recursive delete with prefix {location.s3_uri} at {datetime.now().isoformat()}')
+        print(f'Starting list-objects call with prefix {location.s3_uri} at {datetime.now().isoformat()}')
     output = subprocess.run(cmd, shell=True, capture_output=True)
     keys = output.stdout.decode().split()
     return [as_s3_location(location.bucket, k).s3_uri for k in keys]
