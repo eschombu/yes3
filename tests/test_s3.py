@@ -117,7 +117,7 @@ def _test_list_objects():
 
 
 def _test_list_dir():
-    dir_objs = s3.list_dir(TEST_S3_DIR, return_metadata=True)
+    dir_objs = s3.list_dir(TEST_S3_DIR, return_metadata=True, depth=1)
     assert len(dir_objs) == 3
     s3_objs = [o for o in dir_objs if isinstance(o, s3.S3Object)]
     for obj in s3_objs:
@@ -134,6 +134,13 @@ def _test_list_dir():
     # List two levels down; both dir and its contents listed
     dir_objs = s3.list_dir(TEST_S3_DIR, depth=2)
     assert len(dir_objs) == 6
+    _vprint()
+    for loc in dir_objs:
+        _vprint(f'Found S3 object: {loc}')
+
+    # List all levels down
+    dir_objs = s3.list_dir(TEST_S3_DIR, recursive=True)
+    assert len(dir_objs) == 8
     _vprint()
     for loc in dir_objs:
         _vprint(f'Found S3 object: {loc}')

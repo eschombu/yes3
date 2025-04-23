@@ -292,7 +292,8 @@ def list_objects(
 def list_dir(
         bucket_or_location: S3LocationLike,
         prefix: Optional[str] = None,
-        depth=1,
+        depth=None,
+        recursive=False,
         limit: Optional[int] = None,
         return_metadata: bool = False,
         count_only: bool = False,
@@ -300,6 +301,12 @@ def list_dir(
     location = as_s3_location(bucket_or_location, prefix)
     if location.is_dir_path():
         location = location.join('')
+
+    if depth is None:
+        if recursive:
+            depth = -1
+        else:
+            depth = 1
 
     paginator = _client.get_paginator('list_objects_v2')
     paginator_args = {'Bucket': location.bucket, 'Prefix': location.key, 'Delimiter': '/'}
@@ -321,7 +328,7 @@ def list_dir(
                 results += 1
             else:
                 results.append(S3Prefix(S3Location(location.bucket, item['Prefix'])))
-                if depth > 1:
+                if depth > 1 or depth < 0:
                     results.extend(list_dir(location.bucket, item['Prefix'], depth - 1, return_metadata=True))
         for item in page.get('Contents', []):
             if count_only:
