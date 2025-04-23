@@ -7,8 +7,16 @@ utilities for easily listing, reading, and writing data on/from/to S3.
 
 ## Installation
 
-Using a virtual environment is recommended. The simplest way to install is with pip: `pip install yes3`. To install the
-latest version, you can install from github: `pip install git+https://github.com/eschombu/yes3.git`.
+Using a virtual environment is recommended. The simplest way to install is with pip:
+latest
+```
+pip install yes3
+```
+
+Alternatively, you can install the latest version from github:
+```
+pip install git+https://github.com/eschombu/yes3.git
+```
 
 To run tests and test scripts, and/or contribute to `yes3`, clone this repository from
 https://github.com/eschombu/yes3.git, and install the dev requirements:
