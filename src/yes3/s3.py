@@ -76,8 +76,9 @@ class S3Location:
         return f"{type(self).__name__}({', '.join([f'{k}={v}' for k, v in params.items()])})"
 
     def __eq__(self, other) -> bool:
-        if isinstance(other, type(self)):
-            return self.bucket == other.bucket and self.key == other.key
+        if isinstance(other, S3Location):  # not using type(self) in case comparing different subclasses of S3Location
+            return ((self.bucket == other.bucket) and
+                    ((self.key is None and other.key is None) or (self.key.rstrip('/') == other.key.rstrip('/'))))
         elif isinstance(other, str):
             return self == type(self).parse(other)
         else:
@@ -135,26 +136,30 @@ class S3Location:
         return len(objects) == 1 and objects[0].key == self.key
 
     def is_dir(self) -> bool:
-        if self.is_bucket():
-            return True
-        if self.key.endswith('/'):
-            return True
         if not self.exists():
             return False
         if self.is_object():
             return False
         first_obj = list_objects(self, limit=1)[0]
-        suffix = first_obj.key.split(self.key)[1]
+        suffix = first_obj.s3_uri.split(self.s3_uri.rstrip('/'))[1]
         if suffix.startswith('/'):
             return True
         return False
 
+    def is_dir_path(self) -> bool:
+        if self.is_bucket():
+            return True
+        if self.key.endswith('/'):
+            return True
+        return self.is_dir()
+
     def split_key(self) -> tuple[str, str]:
         if self.key:
-            if '/' not in self.key:
-                return '', self.key
+            key = self.key.rstrip('/')
+            if '/' not in key:
+                return '', key
             else:
-                return tuple(self.key.rsplit('/', maxsplit=1))
+                return tuple(key.rsplit('/', maxsplit=1))
         else:
             return '', ''
 
@@ -293,7 +298,7 @@ def list_dir(
         count_only: bool = False,
 ) -> list[S3Location | S3Object | S3Prefix] | int:
     location = as_s3_location(bucket_or_location, prefix)
-    if location.is_dir():
+    if location.is_dir_path():
         location = location.join('')
 
     paginator = _client.get_paginator('list_objects_v2')
@@ -402,7 +407,7 @@ def _upload_file(local_path: LocalPathLike, location: S3Location, progress=None)
     local_path = Path(local_path).resolve()
     if not local_path.exists():
         raise FileNotFoundError(str(local_path))
-    if location.is_dir():
+    if location.is_dir_path():
         filename = local_path.name
         location = location.join(filename)
     _verbose_print(f'Uploading {local_path} to {location.s3_uri}... ', end='')
