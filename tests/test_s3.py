@@ -61,22 +61,28 @@ def _create_test_files() -> List[os.PathLike]:
 def _test_single_uploads():
     s3_dir_loc = s3.S3Location(TEST_S3_DIR)
 
+    if s3_dir_loc.exists():
+        s3.delete(s3_dir_loc, recursive=True)
+    assert s3_dir_loc.exists() is False
+    assert s3_dir_loc.is_dir() is False
+    assert s3_dir_loc.is_dir_path() is True
+
     # Test single file uploads
     file_loc = s3.upload(TEST_LOCAL_DIR / 'empty_file', s3_dir_loc)
     assert file_loc.key == s3_dir_loc.join('empty_file').key
-    assert file_loc.exists()
-    assert file_loc.is_object()
-    assert not file_loc.is_dir()
+    assert file_loc.exists() is True
+    assert file_loc.is_object() is True
+    assert file_loc.is_dir() is False
 
     file_loc = s3.upload(TEST_LOCAL_DIR / 'dir1/file1.1.txt', s3_dir_loc.join('dir1/file'))
     dir_loc = s3_dir_loc.join('dir1')
     assert file_loc.key == dir_loc.join('file').key
-    assert file_loc.exists()
-    assert file_loc.is_object()
-    assert not file_loc.is_dir()
-    assert dir_loc.exists()
-    assert dir_loc.is_dir()
-    assert not dir_loc.is_object()
+    assert file_loc.exists() is True
+    assert file_loc.is_object() is True
+    assert file_loc.is_dir() is False
+    assert dir_loc.exists() is True
+    assert dir_loc.is_dir() is True
+    assert dir_loc.is_object() is False
 
 
 def _test_delete():
@@ -84,7 +90,7 @@ def _test_delete():
 
     file_loc = s3_dir_loc.join('empty_file')
     s3.delete(file_loc)
-    assert not file_loc.exists()
+    assert file_loc.exists() is False
 
     s3.delete(s3_dir_loc.bucket, s3_dir_loc.join('dir1', 'file').key)
     assert len(s3.list_objects(TEST_S3_DIR)) == 0
@@ -123,7 +129,7 @@ def _test_list_dir():
     assert len(s3_objs) == 2
     assert all(obj.location.is_object() for obj in s3_objs)
     assert len(s3_pfxs) == 1
-    assert all(obj.location.is_dir() for obj in s3_pfxs)
+    assert all(pfx.location.is_dir() for pfx in s3_pfxs)
 
     # List two levels down; both dir and its contents listed
     dir_objs = s3.list_dir(TEST_S3_DIR, depth=2)
@@ -138,7 +144,7 @@ def _test_download():
 
     dwnld_path = s3.download(s3_dir_loc.join('empty_file'), LOCAL_COPY_DIR)
     assert dwnld_path == str(Path(LOCAL_COPY_DIR).resolve() / 'empty_file')
-    assert os.path.exists(dwnld_path)
+    assert os.path.exists(dwnld_path) is True
     os.remove(dwnld_path)
 
     dwnld_paths = s3.download(s3_dir_loc, LOCAL_COPY_DIR, recursive=True)
@@ -146,7 +152,7 @@ def _test_download():
 
     _vprint(f'Deleting {LOCAL_COPY_DIR}')
     shutil.rmtree(LOCAL_COPY_DIR)
-    assert not os.path.exists(LOCAL_COPY_DIR)
+    assert os.path.exists(LOCAL_COPY_DIR) is False
 
 
 def _test_write_read():
@@ -158,27 +164,35 @@ def _test_write_read():
 
 
 class TestS3Utils(unittest.TestCase):
+
+    @mock_aws
     def test_s3_location(self):
+        # moto (aws mock) requires the bucket be created before use
+        s3._client.create_bucket(Bucket=TEST_BUCKET)
 
         # Test with bucket only
-        loc = S3Location('test-bucket')
-        self.assertEqual(loc.s3_uri, 's3://test-bucket')
+        loc = S3Location(TEST_BUCKET)
+        self.assertEqual(loc.s3_uri, f's3://{TEST_BUCKET}')
+        self.assertTrue(loc.is_dir_path())
 
         # Test with bucket, prefix
-        loc = S3Location('test-bucket', 'test-folder1/test_folder2/', 'us-region-1')
-        self.assertEqual(loc.s3_uri, 's3://test-bucket/test-folder1/test_folder2/')
-        self.assertEqual(loc.https_url, 'https://s3.us-region-1.amazonaws.com/test-bucket/test-folder1/test_folder2/')
+        loc = S3Location(TEST_BUCKET, 'test-folder1/test_folder2/', 'us-region-1')
+        self.assertEqual(loc.s3_uri, f's3://{TEST_BUCKET}/test-folder1/test_folder2/')
+        self.assertEqual(loc.https_url, f'https://s3.us-region-1.amazonaws.com/{TEST_BUCKET}/test-folder1/test_folder2/')
+        self.assertTrue(loc.is_dir_path())
 
         # Test with bucket, key, region
-        loc = S3Location('test-bucket', 'test-folder/test_file.ext', 'us-region-1')
-        self.assertEqual(loc.s3_uri, 's3://test-bucket/test-folder/test_file.ext')
-        self.assertEqual(loc.https_url, 'https://s3.us-region-1.amazonaws.com/test-bucket/test-folder/test_file.ext')
+        loc = S3Location(TEST_BUCKET, 'test-folder/test_file.ext', 'us-region-1')
+        self.assertEqual(loc.s3_uri, f's3://{TEST_BUCKET}/test-folder/test_file.ext')
+        self.assertEqual(loc.https_url, f'https://s3.us-region-1.amazonaws.com/{TEST_BUCKET}/test-folder/test_file.ext')
+        self.assertFalse(loc.is_dir_path())
+        self.assertTrue(loc.join('').is_dir_path())
 
         # Test manipulations
-        loc = S3Location('test-bucket', 'test-folder1/', 'us-region-1').join('test_folder2', 'test_file.ext')
+        loc = S3Location(TEST_BUCKET, 'test-folder1/', 'us-region-1').join('test_folder2', 'test_file.ext')
         self.assertEqual(
             loc.https_url,
-            'https://s3.us-region-1.amazonaws.com/test-bucket/test-folder1/test_folder2/test_file.ext'
+            f'https://s3.us-region-1.amazonaws.com/{TEST_BUCKET}/test-folder1/test_folder2/test_file.ext'
         )
         prefix, name = loc.split_key()
         self.assertEqual(prefix, 'test-folder1/test_folder2')
@@ -187,11 +201,16 @@ class TestS3Utils(unittest.TestCase):
         self.assertEqual(loc.parent.join(name), loc)
         self.assertEqual(loc.parent / name, loc)
 
-        loc = S3Location('test-bucket', 'test-folder1/', 'us-region-1').join('test_folder2', '', '')
+        loc = S3Location(TEST_BUCKET, 'test-folder1/', 'us-region-1').join('test_folder2', '', '')
         self.assertEqual(
             loc.https_url,
-            'https://s3.us-region-1.amazonaws.com/test-bucket/test-folder1/test_folder2/'
+            f'https://s3.us-region-1.amazonaws.com/{TEST_BUCKET}/test-folder1/test_folder2/'
         )
+
+        # The following should not be sensitive to the forward slash at the end
+        self.assertEqual(S3Location(f's3://{TEST_BUCKET}/').split_key(), ('', ''))
+        self.assertEqual(S3Location(f's3://{TEST_BUCKET}/'), f's3://{TEST_BUCKET}')
+        self.assertEqual(S3Location(f's3://{TEST_BUCKET}/dir/subdir/').join(''), f's3://{TEST_BUCKET}/dir/subdir')
 
     @mock_aws
     def test_read_write_ops(self):
