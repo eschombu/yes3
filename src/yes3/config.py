@@ -1,4 +1,7 @@
+import logging
 from dataclasses import dataclass
+
+from yes3.utils.logs import check_level, get_logger
 
 PROGRESS_MODES = {'off', 'all', 'large'}
 
@@ -6,7 +9,7 @@ PROGRESS_MODES = {'off', 'all', 'large'}
 @dataclass
 class YeS3Config:
     default_region: str = 'us-east-2'
-    verbose: bool = False
+    log_level: int = logging.WARNING
     progress_mode: str = 'large'
     progress_size: int | float = 50e6  # bytes
 
@@ -23,4 +26,9 @@ class YeS3Config:
     def __setattr__(self, name, value):
         if name == 'progress_mode':
             value = self.check_progress_mode(value)
+        if name == 'log_level':
+            root_logger = get_logger()
+            value = check_level(value)
+            if value != root_logger.level:
+                root_logger.setLevel(value)
         super().__setattr__(name, value)

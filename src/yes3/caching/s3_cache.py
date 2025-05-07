@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional, Self
 
 from yes3 import s3
+from yes3.caching import logger
 from yes3.caching.base import Cache, CacheDictCatalog, CachedItemMeta, CacheReaderWriter
 from yes3.s3 import S3Location
 
@@ -50,7 +51,7 @@ class S3ReaderWriter(CacheReaderWriter):
     def read(self, key: str, file_type=None):
         file_type = file_type or self._file_type
         path = self.key2path(key)
-        print(f"Reading cached item '{key}' at {path.s3_uri}")
+        logger.info(f"Reading cached item '{key}' at {path.s3_uri}")
         return s3.read(path, file_type=file_type)
 
     def _build_meta(self, path, key=None) -> CachedItemMeta:
@@ -80,7 +81,7 @@ class S3ReaderWriter(CacheReaderWriter):
     def write(self, key: str, obj, meta: Optional[CachedItemMeta] = None, file_type=None) -> CachedItemMeta:
         file_type = file_type or self._file_type
         obj_path = self.key2path(key)
-        print(f"Caching item '{key}' at {obj_path.s3_uri}")
+        logger.info(f"Caching item '{key}' at {obj_path.s3_uri}")
         s3.write_to_s3(obj, obj_path, file_type=file_type, progress=self._progress)
 
         meta_path = self.key2path(key, meta=True)
@@ -93,9 +94,9 @@ class S3ReaderWriter(CacheReaderWriter):
         path = self.key2path(key)
         meta_path = self.key2path(key, meta=True)
         if meta_only:
-            print(f"Deleting cached item '{key}' metadata at {meta_path.s3_uri}")
+            logger.info(f"Deleting cached item '{key}' metadata at {meta_path.s3_uri}")
         else:
-            print(f"Deleting cached item '{key}' at {path.s3_uri}")
+            logger.info(f"Deleting cached item '{key}' at {path.s3_uri}")
             s3.delete(path)
         s3.delete(meta_path)
 
@@ -111,14 +112,14 @@ class S3Cache(Cache):
         meta_map = {reader_writer.path2key(loc): loc for loc in meta_locs}
         if data_map.keys() != meta_map.keys():
             if rebuild_missing_meta:
-                print(f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
-                      'rebuilding missing metadata files')
+                logger.warn(f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
+                         'rebuilding missing metadata files')
             else:
                 raise RuntimeError(f'data and metadata files are not aligned for cache at {reader_writer.path}')
         for key in data_map.keys():
             catalog_dict[key] = reader_writer.get_meta(key, rebuild=(key not in meta_map and rebuild_missing_meta))
         if len(catalog_dict.keys()) > 0:
-            print(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path.s3_uri}')
+            logger.info(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path.s3_uri}')
         return catalog_dict
 
     @classmethod
@@ -160,11 +161,12 @@ class S3Cache(Cache):
             if not force:
                 raise RuntimeError(f'Clearing this {type(self).__name__} ({self.path.s3_uri}) requires specifying '
                                    'force=True')
-            print(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
+            logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
             for key in self.keys():
                 self.remove(key)
             new_cache = type(self).create(self.path, reader_writer=self._reader_writer)
-            self.__init__(new_cache._catalog, new_cache._reader_writer, active=self._active, read_only=self._read_only)
+            self.__init__(new_cache._catalog, new_cache._reader_writer, active=self._active, read_only=self._read_only,
+                          log_level=self._log_level)
         return self
 
     def clear_meta(self, force=False) -> Self:
@@ -172,7 +174,7 @@ class S3Cache(Cache):
             if not force:
                 raise RuntimeError(f'Clearing this {type(self).__name__} metadata ({self.path.s3_uri}) requires '
                                    'specifying force=True')
-            print(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
+            logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
             for key in self.keys():
                 self.remove(key, meta_only=True)
         return self

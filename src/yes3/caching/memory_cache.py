@@ -1,12 +1,13 @@
 from datetime import datetime, UTC
 from typing import Any, Optional, Self
 
+from yes3.caching import logger
 from yes3.caching.base import CacheCore, CachedItemMeta, raise_not_found, _NotSpecified
 
 
 class MemoryCache(CacheCore):
-    def __init__(self, active=True, read_only=False):
-        super().__init__(active=active, read_only=read_only)
+    def __init__(self, active=True, read_only=False, log_level=None):
+        super().__init__(active=active, read_only=read_only, log_level=log_level)
         self._data: dict[str, Any] = {}
         self._meta: dict[str, CachedItemMeta] = {}
 
@@ -42,7 +43,7 @@ class MemoryCache(CacheCore):
             self._meta[key] = meta
             self._data[key] = obj
         else:
-            print(f"WARNING: {type(self).__name__} is not active")
+            logger.warn(f"WARNING: {type(self).__name__} is not active")
         return self
 
     def remove(self, key: str) -> Self:
@@ -53,7 +54,7 @@ class MemoryCache(CacheCore):
                 self._data.pop(key)
                 self._meta.pop(key)
         else:
-            print(f"WARNING: {type(self).__name__} is not active")
+            logger.warn(f"WARNING: {type(self).__name__} is not active")
         return self
 
     def keys(self) -> list[Any]:
@@ -70,5 +71,5 @@ class MemoryCache(CacheCore):
                 self._data: dict[str, Any] = {}
                 self._meta: dict[str, CachedItemMeta] = {}
         else:
-            print(f"WARNING: {type(self).__name__} is not active")
+            logger.warn(f"WARNING: {type(self).__name__} is not active")
         return self

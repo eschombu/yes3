@@ -18,7 +18,9 @@ from tqdm import tqdm
 from .client import get_client as _get_client
 from .config import YeS3Config
 from .utils.decorators import timeit_opt
+from .utils.logs import get_logger
 
+log = get_logger()
 _client = _get_client()
 
 # Don't overwrite the value of YES3_CONFIG if it has already been set
@@ -39,11 +41,6 @@ def config(**config_params):
     for param, value in config_params.items():
         setattr(YES3_CONFIG, param, value)
     return YES3_CONFIG
-
-
-def _verbose_print(*args, **kwargs):
-    if YES3_CONFIG.verbose:
-        print(*args, **kwargs)
 
 
 def is_s3_url(s: str) -> bool:
@@ -417,10 +414,10 @@ def _upload_file(local_path: LocalPathLike, location: S3Location, progress=None)
     if location.is_dir_path():
         filename = local_path.name
         location = location.join(filename)
-    _verbose_print(f'Uploading {local_path} to {location.s3_uri}... ', end='')
+    log.info(f'Uploading {local_path} to {location.s3_uri}... ', end='')
     callback = _get_upload_prog_callback(progress, local_path)
     _client.upload_file(str(local_path), location.bucket, location.key, Callback=callback)
-    _verbose_print('DONE')
+    log.info('DONE')
     return location
 
 
@@ -530,10 +527,10 @@ def _download_object(location: S3Location, local_path: LocalPathLike, progress=N
         local_path = local_path / filename
     else:
         os.makedirs(local_path.parent, exist_ok=True)
-    _verbose_print(f'Downloading {location.s3_uri} to {local_path}... ', end='')
+    log.info(f'Downloading {location.s3_uri} to {local_path}... ', end='')
     callback = _get_download_prog_callback(progress, location)
     _client.download_file(location.bucket, location.key, str(local_path), Callback=callback)
-    _verbose_print('DONE')
+    log.info('DONE')
     return local_path
 
 
@@ -584,9 +581,9 @@ def download(
 
 
 def _delete_object(location: S3Location):
-    _verbose_print(f'Deleting {location.s3_uri}... ', end='')
+    log.info(f'Deleting {location.s3_uri}... ', end='')
     _client.delete_object(Bucket=location.bucket, Key=location.key)
-    _verbose_print('DONE')
+    log.info('DONE')
 
 
 def delete(
@@ -660,11 +657,11 @@ def read(
     if with_progress or local_temp_file:
         if not local_temp_file:
             local_temp_file = f"TMPFILE.{datetime.now().strftime('%Y%m%dT%H%M%S.%f')}"
-        _verbose_print(f"Reading to local temp {file_type} file: {local_temp_file}")
+        log.info(f"Reading to local temp {file_type} file: {local_temp_file}")
         body = download(location, local_temp_file, progress=progress)
         with open(body, 'rb') as f:
             obj = read_body(f)
-        _verbose_print(f'Deleting {local_temp_file}')
+        log.info(f'Deleting {local_temp_file}')
         os.remove(local_temp_file)
         return obj
     else:
@@ -691,7 +688,7 @@ def write_to_s3(
     if not file_type:
         file_type = 'pkl'
 
-    _verbose_print(f"Writing local temp {file_type} file: {local_temp_file}")
+    log.info(f"Writing local temp {file_type} file: {local_temp_file}")
     if file_type == 'json':
         with open(local_temp_file, 'w') as f:
             json.dump(obj, f, **kwargs)
@@ -710,7 +707,7 @@ def write_to_s3(
         raise ValueError(f"Unrecognized file_type: '{file_type}'")
 
     written_loc = upload(local_temp_file, s3_loc, progress=progress)
-    _verbose_print(f'Deleting {local_temp_file}')
+    log.info(f'Deleting {local_temp_file}')
     os.remove(local_temp_file)
     return written_loc
 
@@ -718,6 +715,7 @@ def write_to_s3(
 def touch(bucket_or_location: S3LocationLike, prefix: Optional[str] = None):
     location = as_s3_location(bucket_or_location, prefix)
     _client.put_object(Bucket=location.bucket, Key=location.key, Body=b'')
+    log.info(f'Created empty object at {location.s3_uri}')
 
 
 @timeit_opt(default=True)

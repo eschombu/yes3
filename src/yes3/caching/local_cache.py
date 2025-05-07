@@ -7,6 +7,7 @@ from glob import glob
 from pathlib import Path
 from typing import Optional, Self
 
+from yes3.caching import logger
 from yes3.caching.base import Cache, CacheDictCatalog, CachedItemMeta, Serializer, CacheReaderWriter
 
 
@@ -108,7 +109,7 @@ class LocalReaderWriter(CacheReaderWriter):
 
     def read(self, key: str):
         path = self.key2path(key)
-        print(f"Reading cached item '{key}' at {path}")
+        logger.info(f"Reading cached item '{key}' at {path}")
         return self.obj_serializer.read(path)
 
     def _build_meta(self, path, key=None) -> CachedItemMeta:
@@ -136,7 +137,7 @@ class LocalReaderWriter(CacheReaderWriter):
 
     def write(self, key: str, obj, meta: Optional[CachedItemMeta] = None) -> CachedItemMeta:
         obj_path = self.key2path(key)
-        print(f"Caching item '{key}' at {obj_path}")
+        logger.info(f"Caching item '{key}' at {obj_path}")
         self.obj_serializer.write(obj_path, obj)
 
         meta_path = self.key2path(key, meta=True)
@@ -149,9 +150,9 @@ class LocalReaderWriter(CacheReaderWriter):
         path = self.key2path(key)
         meta_path = self.key2path(key, meta=True)
         if meta_only:
-            print(f"Deleting cached item '{key}' metadata at {meta_path}")
+            logger.info(f"Deleting cached item '{key}' metadata at {meta_path}")
         else:
-            print(f"Deleting cached item '{key}' at {path}")
+            logger.info(f"Deleting cached item '{key}' at {path}")
             os.remove(path)
         os.remove(meta_path)
 
@@ -169,14 +170,14 @@ class LocalDiskCache(Cache):
             meta_map = {Path(p).stem: p for p in meta_files}
             if data_map.keys() != meta_map.keys():
                 if rebuild_missing_meta:
-                    print(f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
-                          'rebuilding missing metadata files')
+                    logger.warn(f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
+                             'rebuilding missing metadata files')
                 else:
                     raise RuntimeError(f'data and metadata files are not aligned for cache at {reader_writer.path}')
             for key in data_map.keys():
                 catalog_dict[key] = reader_writer.get_meta(key, rebuild=(key not in meta_map and rebuild_missing_meta))
         if len(catalog_dict.keys()) > 0:
-            print(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path}')
+            logger.info(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path}')
         return catalog_dict
 
     @classmethod
@@ -213,11 +214,12 @@ class LocalDiskCache(Cache):
         if self.is_active() and len(self.keys()) > 0:
             if not force:
                 raise RuntimeError(f'Clearing this {type(self).__name__} ({self.path}) requires specifying force=True')
-            print(f'Deleting {len(self.keys())} item(s) from cache at {self.path}')
+            logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path}')
             for key in self.keys():
                 self.remove(key)
             new_cache = type(self).create(self.path, reader_writer=self._reader_writer)
-            self.__init__(new_cache._catalog, new_cache._reader_writer, active=self._active, read_only=self._read_only)
+            self.__init__(new_cache._catalog, new_cache._reader_writer, active=self._active, read_only=self._read_only,
+                          log_level=self._log_level)
         return self
 
     def clear_meta(self, force=False) -> Self:
@@ -225,7 +227,7 @@ class LocalDiskCache(Cache):
             if not force:
                 raise RuntimeError(f'Clearing this {type(self).__name__} metadata ({self.path}) requires specifying '
                                    'force=True')
-            print(f'Deleting {len(self.keys())} item(s) from cache at {self.path}')
+            logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path}')
             for key in self.keys():
                 self.remove(key, meta_only=True)
         return self

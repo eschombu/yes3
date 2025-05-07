@@ -2,13 +2,21 @@ from collections import defaultdict
 from typing import Iterator, Optional, Self
 
 from yes3 import S3Location
+from yes3.caching import logger
 from yes3.caching.base import CacheCore, CachedItemMeta, check_meta_mismatches, raise_not_found, _NotSpecified
 
 
 class MultiCache(CacheCore):
-    def __init__(self, caches: list[CacheCore], left_to_right_priority=True, sync_all=False, active=True,
-                 read_only=False):
-        super().__init__(active=active, read_only=read_only)
+    def __init__(
+            self,
+            caches: list[CacheCore],
+            left_to_right_priority=True,
+            sync_all=False,
+            active=True,
+            read_only=False,
+            log_level=None,
+    ):
+        super().__init__(active=active, read_only=read_only, log_level=log_level)
         if left_to_right_priority:
             self._caches = list(caches)
         else:
@@ -88,7 +96,7 @@ class MultiCache(CacheCore):
                 if meta is None:
                     meta = c_meta
                 elif meta != c_meta:
-                    print(f"WARNING: meta data mismatch in caches for '{key}'")
+                    logger.warn(f"WARNING: meta data mismatch in caches for '{key}'")
         if meta is None:
             raise_not_found(key)
         return meta
@@ -113,7 +121,7 @@ class MultiCache(CacheCore):
         if self.is_read_only():
             raise TypeError('Cache is in read only mode')
         if not self.is_active():
-            print(f"WARNING: {type(self).__name__} is not active")
+            logger.warn(f"WARNING: {type(self).__name__} is not active")
             return self
         for cache in self:
             if cache.is_read_only():
@@ -122,7 +130,7 @@ class MultiCache(CacheCore):
             meta = cache.get_meta(key)
             mismatch = self.check_meta_mismatches(key)
             if mismatch and not update:
-                print(f"WARNING: Metadata mismatch for '{key}'. Use update=True to sync across caches.")
+                logger.warn(f"WARNING: Metadata mismatch for '{key}'. Use update=True to sync across caches.")
             if not self._sync_all and not mismatch:
                 break
         return self
@@ -133,7 +141,7 @@ class MultiCache(CacheCore):
                 if key in cache:
                     cache.remove(key)
         else:
-            print(f"WARNING: {type(self).__name__} is not active")
+            logger.warn(f"WARNING: {type(self).__name__} is not active")
         return self
 
     def keys(self) -> list[str]:

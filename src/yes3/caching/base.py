@@ -1,8 +1,13 @@
+import logging
 from abc import ABCMeta, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, UTC
 from typing import Iterable, Iterator, Optional, Self
+
+from yes3.utils.logs import check_level, get_logger
+
+logger = get_logger('caching', level=logging.WARNING)
 
 _NotSpecified = object()
 
@@ -36,9 +41,19 @@ class CachedItemMeta:
 
 
 class CacheCore(metaclass=ABCMeta):
-    def __init__(self, active=True, read_only=False):
+    def __init__(self, active=True, read_only=False, log_level=None):
         self._read_only = read_only
         self._active = active
+        self._log_level = None
+        self.set_log_level(log_level)
+
+    def set_log_level(self, level) -> Self:
+        if level != self._log_level:
+            logger.info(f"Setting log level to {level}")
+        self._log_level = level
+        if level is not None:
+            logger.setLevel(check_level(level))
+        return self
 
     @abstractmethod
     def __contains__(self, key):
@@ -195,8 +210,14 @@ class CacheDictCatalog(CacheCatalog):
 
 
 class Cache(CacheCore, metaclass=ABCMeta):
-    def __init__(self, catalog: CacheCatalog, reader_writer: CacheReaderWriter, active=True, read_only=False):
-        super().__init__(active=active, read_only=read_only)
+    def __init__(
+            self,
+            catalog: CacheCatalog,
+            reader_writer: CacheReaderWriter,
+            active=True, read_only=False,
+            log_level=None,
+    ):
+        super().__init__(active=active, read_only=read_only, log_level=log_level)
         self._catalog = catalog
         self._reader_writer = reader_writer
 
@@ -232,7 +253,7 @@ class Cache(CacheCore, metaclass=ABCMeta):
             meta = self._reader_writer.write(key, obj, meta=meta)
             self._catalog.add(key, meta)
         else:
-            print(f'WARNING: {type(self).__name__} is not active')
+            logger.info(f'WARNING: {type(self).__name__} is not active')
         return self
 
     def remove(self, key: str, meta_only=False) -> Self:
