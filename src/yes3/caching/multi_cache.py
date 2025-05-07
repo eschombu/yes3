@@ -96,7 +96,7 @@ class MultiCache(CacheCore):
                 if meta is None:
                     meta = c_meta
                 elif meta != c_meta:
-                    logger.warn(f"WARNING: meta data mismatch in caches for '{key}'")
+                    logger.warning(f"WARNING: meta data mismatch in caches for '{key}'")
         if meta is None:
             raise_not_found(key)
         return meta
@@ -121,7 +121,7 @@ class MultiCache(CacheCore):
         if self.is_read_only():
             raise TypeError('Cache is in read only mode')
         if not self.is_active():
-            logger.warn(f"WARNING: {type(self).__name__} is not active")
+            logger.warning(f"WARNING: {type(self).__name__} is not active")
             return self
         for cache in self:
             if cache.is_read_only():
@@ -130,7 +130,7 @@ class MultiCache(CacheCore):
             meta = cache.get_meta(key)
             mismatch = self.check_meta_mismatches(key)
             if mismatch and not update:
-                logger.warn(f"WARNING: Metadata mismatch for '{key}'. Use update=True to sync across caches.")
+                logger.warning(f"WARNING: Metadata mismatch for '{key}'. Use update=True to sync across caches.")
             if not self._sync_all and not mismatch:
                 break
         return self
@@ -141,7 +141,7 @@ class MultiCache(CacheCore):
                 if key in cache:
                     cache.remove(key)
         else:
-            logger.warn(f"WARNING: {type(self).__name__} is not active")
+            logger.warning(f"WARNING: {type(self).__name__} is not active")
         return self
 
     def keys(self) -> list[str]:

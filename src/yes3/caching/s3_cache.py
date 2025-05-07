@@ -112,7 +112,7 @@ class S3Cache(Cache):
         meta_map = {reader_writer.path2key(loc): loc for loc in meta_locs}
         if data_map.keys() != meta_map.keys():
             if rebuild_missing_meta:
-                logger.warn(f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
+                logger.warning(f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
                          'rebuilding missing metadata files')
             else:
                 raise RuntimeError(f'data and metadata files are not aligned for cache at {reader_writer.path}')

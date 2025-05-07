@@ -43,7 +43,7 @@ class MemoryCache(CacheCore):
             self._meta[key] = meta
             self._data[key] = obj
         else:
-            logger.warn(f"WARNING: {type(self).__name__} is not active")
+            logger.warning(f"WARNING: {type(self).__name__} is not active")
         return self
 
     def remove(self, key: str) -> Self:
@@ -54,7 +54,7 @@ class MemoryCache(CacheCore):
                 self._data.pop(key)
                 self._meta.pop(key)
         else:
-            logger.warn(f"WARNING: {type(self).__name__} is not active")
+            logger.warning(f"WARNING: {type(self).__name__} is not active")
         return self
 
     def keys(self) -> list[Any]:
@@ -71,5 +71,5 @@ class MemoryCache(CacheCore):
                 self._data: dict[str, Any] = {}
                 self._meta: dict[str, CachedItemMeta] = {}
         else:
-            logger.warn(f"WARNING: {type(self).__name__} is not active")
+            logger.warning(f"WARNING: {type(self).__name__} is not active")
         return self
