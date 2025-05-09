@@ -185,18 +185,21 @@ class TestS3Utils(unittest.TestCase):
         # Test with bucket, prefix
         loc = S3Location(TEST_BUCKET, 'test-folder1/test_folder2/', 'us-region-1')
         self.assertEqual(loc.s3_uri, f's3://{TEST_BUCKET}/test-folder1/test_folder2/')
-        self.assertEqual(loc.https_url, f'https://s3.us-region-1.amazonaws.com/{TEST_BUCKET}/test-folder1/test_folder2/')
+        self.assertEqual(loc.https_url,
+                         f'https://s3.us-region-1.amazonaws.com/{TEST_BUCKET}/test-folder1/test_folder2/')
         self.assertTrue(loc.is_dir_path())
 
         # Test with bucket, key, region
         loc = S3Location(TEST_BUCKET, 'test-folder/test_file.ext', 'us-region-1')
         self.assertEqual(loc.s3_uri, f's3://{TEST_BUCKET}/test-folder/test_file.ext')
-        self.assertEqual(loc.https_url, f'https://s3.us-region-1.amazonaws.com/{TEST_BUCKET}/test-folder/test_file.ext')
+        self.assertEqual(loc.https_url,
+                         f'https://s3.us-region-1.amazonaws.com/{TEST_BUCKET}/test-folder/test_file.ext')
         self.assertFalse(loc.is_dir_path())
         self.assertTrue(loc.join('').is_dir_path())
 
         # Test manipulations
-        loc = S3Location(TEST_BUCKET, 'test-folder1/', 'us-region-1').join('test_folder2', 'test_file.ext')
+        loc = S3Location(TEST_BUCKET, 'test-folder1/', 'us-region-1').join(
+            'test_folder2', 'test_file.ext')
         self.assertEqual(
             loc.https_url,
             f'https://s3.us-region-1.amazonaws.com/{TEST_BUCKET}/test-folder1/test_folder2/test_file.ext'
