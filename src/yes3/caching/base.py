@@ -55,6 +55,9 @@ class CacheCore(metaclass=ABCMeta):
             logger.setLevel(check_level(level))
         return self
 
+    def get_log_level(self) -> Optional[int]:
+        return self._log_level
+
     @abstractmethod
     def __contains__(self, key):
         pass
