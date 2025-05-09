@@ -5,6 +5,7 @@ from datetime import datetime, UTC
 from functools import partial
 from glob import glob
 from pathlib import Path
+from time import sleep
 from typing import Optional, Self
 
 from yes3.caching import logger
@@ -159,7 +160,9 @@ class LocalReaderWriter(CacheReaderWriter):
 
 class LocalDiskCache(Cache):
     @staticmethod
-    def _build_catalog_dict(reader_writer: LocalReaderWriter, rebuild_missing_meta=False) -> dict:
+    def _build_catalog_dict(
+            reader_writer: LocalReaderWriter, rebuild_missing_meta=False, retries=1, retry_sec=0.5,
+    ) -> dict:
         catalog_dict = {}
         if os.path.exists(reader_writer.path):
             data_ext = reader_writer.obj_serializer.ext.lstrip('.')
@@ -169,11 +172,22 @@ class LocalDiskCache(Cache):
             data_map = {Path(p).stem: p for p in data_files}
             meta_map = {Path(p).stem: p for p in meta_files}
             if data_map.keys() != meta_map.keys():
-                if rebuild_missing_meta:
-                    logger.warning(f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
-                             'rebuilding missing metadata files')
+                if retries:
+                    # During parallel processing, there may be a temporary misalignment of data and metadata files,
+                    #  retry in case the situation is quickly resolved
+                    logger.warning(
+                        f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
+                        f'retrying in {retry_sec} seconds')
+                    sleep(retry_sec)
+                    return LocalDiskCache._build_catalog_dict(
+                        reader_writer, rebuild_missing_meta, retries - 1, retry_sec=retry_sec)
                 else:
-                    raise RuntimeError(f'data and metadata files are not aligned for cache at {reader_writer.path}')
+                    if rebuild_missing_meta:
+                        logger.warning(
+                            f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
+                            'rebuilding missing metadata files')
+                    else:
+                        raise RuntimeError(f'data and metadata files are not aligned for cache at {reader_writer.path}')
             for key in data_map.keys():
                 catalog_dict[key] = reader_writer.get_meta(key, rebuild=(key not in meta_map and rebuild_missing_meta))
         if len(catalog_dict.keys()) > 0:

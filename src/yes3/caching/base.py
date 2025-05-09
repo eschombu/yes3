@@ -172,6 +172,10 @@ class CacheCatalog(metaclass=ABCMeta):
     def items(self):
         pass
 
+    @abstractmethod
+    def rebuild(self):
+        pass
+
 
 _CatalogT = dict[str, CachedItemMeta]
 _CatalogBuilderT = Callable[[], _CatalogT]
@@ -275,6 +279,10 @@ class Cache(CacheCore, metaclass=ABCMeta):
             return []
         else:
             return list(self._catalog.keys())
+
+    def rebuild(self) -> Self:
+        self._catalog.rebuild()
+        return self
 
     def _repr_params(self) -> list[str]:
         params = [f'{len(self.keys())} items']
