@@ -173,5 +173,11 @@ class MultiCache(CacheCore):
         self._sync_all = True
         self.sync_now()
 
+    def rebuild(self) -> Self:
+        for cache in self:
+            if hasattr(cache, 'rebuild'):
+                cache.rebuild()
+        return self
+
     def __repr__(self):
         return f"{type(self).__name__}({', '.join([str(cache) for cache in self])})"
