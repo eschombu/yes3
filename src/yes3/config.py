@@ -1,6 +1,8 @@
 import logging
 from dataclasses import dataclass
 
+from boto3.s3.transfer import TransferConfig
+
 from yes3.utils.logs import check_level, get_logger
 
 PROGRESS_MODES = {'off', 'all', 'large'}
@@ -11,7 +13,8 @@ class YeS3Config:
     default_region: str = 'us-east-2'
     log_level: int = logging.WARNING
     progress_mode: str = 'large'
-    progress_size: int | float = 50e6  # bytes
+    progress_size_threshold: int | float = 100e6  # bytes
+    upload_transfer_config: TransferConfig = TransferConfig()
 
     @staticmethod
     def check_progress_mode(value) -> str:

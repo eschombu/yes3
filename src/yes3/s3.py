@@ -369,37 +369,36 @@ def is_unmade_dir(path: os.PathLike) -> bool:
 def _parse_progress_arg(progress_arg) -> tuple[str, int | float]:
     if isinstance(progress_arg, str):
         progress_mode = YES3_CONFIG.check_progress_mode(progress_arg)
-        progress_size = YES3_CONFIG.progress_size
+        progress_size_threshold = YES3_CONFIG.progress_size_threshold
     elif progress_arg is False:
         progress_mode = YES3_CONFIG.check_progress_mode('off')
-        progress_size = YES3_CONFIG.progress_size
+        progress_size_threshold = YES3_CONFIG.progress_size_threshold
     elif progress_arg is None:
         progress_mode = YES3_CONFIG.progress_mode
-        progress_size = YES3_CONFIG.progress_size
+        progress_size_threshold = YES3_CONFIG.progress_size_threshold
     else:
         try:
-            progress_size = float(progress_arg)
+            progress_size_threshold = float(progress_arg)
             progress_mode = YES3_CONFIG.check_progress_mode('large')
         except (ValueError, TypeError):
             raise ValueError(f'Invalid progress arg value: {progress_arg}')
 
-    return progress_mode, progress_size
+    return progress_mode, progress_size_threshold
 
 
-def _get_upload_prog_callback(progress_arg, path: Path):
+def _get_upload_prog_callback(progress_arg, filesize: int, path: Path):
     # Parse progress arg
     if callable(progress_arg):
         return progress_arg
-    progress_mode, progress_size = _parse_progress_arg(progress_arg)
+    progress_mode, progress_size_threshold = _parse_progress_arg(progress_arg)
 
     if progress_mode == 'off':
         return
 
-    obj_size = path.stat().st_size
-    if progress_mode == 'large' and obj_size < progress_size:
+    if progress_mode == 'large' and filesize < progress_size_threshold:
         return
 
-    pbar = tqdm(total=obj_size, desc=f"Uploading {path.name}")
+    pbar = tqdm(total=filesize, desc=f"Uploading {path.name}")
 
     def f(size):
         pbar.update(size)
@@ -414,10 +413,22 @@ def _upload_file(local_path: LocalPathLike, location: S3Location, progress=None)
     if location.is_dir_path():
         filename = local_path.name
         location = location.join(filename)
-    log.info(f'Uploading {local_path} to {location.s3_uri}... ', end='')
-    callback = _get_upload_prog_callback(progress, local_path)
-    _client.upload_file(str(local_path), location.bucket, location.key, Callback=callback)
-    log.info('DONE')
+    log.info(f'Uploading {local_path} to {location.s3_uri}... ')
+    filesize = local_path.stat().st_size
+    transfer_config = YES3_CONFIG.upload_transfer_config
+    if filesize < transfer_config.multipart_threshold:
+        with open(local_path, 'rb') as f:
+            _client.put_object(Bucket=location.bucket, Key=location.key, Body=f)
+    else:
+        opt_prog_callback = _get_upload_prog_callback(progress, filesize, local_path)
+        _client.upload_file(
+            Filename=str(local_path),
+            Bucket=location.bucket,
+            Key=location.key,
+            Config=transfer_config,
+            Callback=opt_prog_callback,
+        )
+    log.info(f'Uploaded {local_path} to {location.s3_uri}')
     return location
 
 
@@ -527,10 +538,10 @@ def _download_object(location: S3Location, local_path: LocalPathLike, progress=N
         local_path = local_path / filename
     else:
         os.makedirs(local_path.parent, exist_ok=True)
-    log.info(f'Downloading {location.s3_uri} to {local_path}... ', end='')
+    log.info(f'Downloading {location.s3_uri} to {local_path}... ')
     callback = _get_download_prog_callback(progress, location)
     _client.download_file(location.bucket, location.key, str(local_path), Callback=callback)
-    log.info('DONE')
+    log.info(f'Downloaded {location.s3_uri} to {local_path}')
     return local_path
 
 
@@ -581,9 +592,9 @@ def download(
 
 
 def _delete_object(location: S3Location):
-    log.info(f'Deleting {location.s3_uri}... ', end='')
+    log.info(f'Deleting {location.s3_uri}... ')
     _client.delete_object(Bucket=location.bucket, Key=location.key)
-    log.info('DONE')
+    log.info(f'Deleted {location.s3_uri}')
 
 
 def delete(
