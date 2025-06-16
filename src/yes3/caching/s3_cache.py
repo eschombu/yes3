@@ -37,6 +37,23 @@ class S3ReaderWriter(CacheReaderWriter):
         self._meta_ext = meta_ext
         self._progress = progress
 
+    def clone(self, *args, **kwargs) -> Self:
+        params = {
+            'path': self.path,
+            'file_type': self._file_type,
+            'meta_file_type': self._meta_file_type,
+            'meta_ext': self._meta_ext,
+            'progress': self._progress,
+        }
+        for value, key in zip(args, params.keys()):
+            if value is not None:
+                params[key] = value
+        for key, value in kwargs.items():
+            if key not in params:
+                raise TypeError(f'Unexpected parameter {key} for {type(self).__name__}')
+            params[key] = value
+        return type(self)(**params)
+
     def key2path(self, key: str, meta=False) -> S3Location:
         if meta:
             return _with_ext(self.path.join(key), self._meta_ext)
@@ -156,6 +173,10 @@ class S3Cache(Cache):
             if meta_ext is not None:
                 rw_kwargs['meta_ext'] = meta_ext
             reader_writer = S3ReaderWriter(path, **rw_kwargs)
+        elif not isinstance(reader_writer, S3ReaderWriter):
+            raise TypeError(f'`reader_writer` must be a {S3ReaderWriter.__name__} instance')
+        elif reader_writer.path != path:
+            reader_writer = reader_writer.clone(path)
         catalog_builder = partial(cls._build_catalog_dict, reader_writer=reader_writer,
                                   rebuild_missing_meta=rebuild_missing_meta)
         catalog = CacheDictCatalog(catalog_builder=catalog_builder)

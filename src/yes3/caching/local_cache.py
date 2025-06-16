@@ -94,8 +94,20 @@ class LocalReaderWriter(CacheReaderWriter):
         self.obj_serializer = _get_serializer(object_serializer)
         self.meta_serializer = _get_serializer(meta_serializer)
 
-    def clone(self, path: str | Path) -> Self:
-        return type(self)(path, object_serializer=self.obj_serializer, meta_serializer=self.meta_serializer)
+    def clone(self, *args, **kwargs) -> Self:
+        params = {
+            'path': self.path,
+            'object_serializer': self.obj_serializer,
+            'meta_serializer': self.meta_serializer,
+        }
+        for value, key in zip(args, params.keys()):
+            if value is not None:
+                params[key] = value
+        for key, value in kwargs.items():
+            if key not in params:
+                raise TypeError(f'Unexpected parameter {key} for {type(self).__name__}')
+            params[key] = value
+        return type(self)(**params)
 
     def key2path(self, key: str, meta=False) -> Path:
         if meta:
