@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yes3"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
   { name="Erik Schomburg", email="eschomburg@gmail.com" },
 ]
 description = "A simple, intuitive, flexible interface for Amazon S3"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
