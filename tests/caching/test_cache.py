@@ -137,6 +137,27 @@ class TestCaches(unittest.TestCase):
         self._check_paths_exists(cache, False)
         self.assertEqual(retrieved, data)
 
+    def _test_subcache(self, cache: CacheCore):
+        subcache = cache.subcache('subdir')
+        self.assertIsInstance(subcache, type(cache))
+        if hasattr(cache, 'path'):
+            self.assertEqual(subcache.path, cache.path / 'subdir')
+        elif isinstance(cache, MultiCache):
+            for c, s in zip(cache._caches, subcache._caches):
+                self.assertEqual(s.path, c.path / 'subdir')
+        num_cache_items = len(cache.keys())
+        num_subcache_items = len(subcache.keys())
+        self.assertEqual(num_subcache_items, 0)
+        subcache.put(key, data)
+        self.assertEqual(len(cache.keys()), num_cache_items)
+        self.assertEqual(len(subcache.keys()), num_subcache_items + 1)
+        self.assertTrue(key in subcache)
+        retrieved = subcache.get(key)
+        self.assertEqual(retrieved, data)
+        subcache.remove(key)
+        self.assertTrue(key not in subcache)
+        self.assertEqual(len(subcache.keys()), num_subcache_items)
+
     def _test_initializing_local_cache_with_data(self, cache: LocalDiskCache):
         cache.put(key, data)
         new_cache = LocalDiskCache.create(TEST_LOCAL_DIR)
@@ -196,6 +217,7 @@ class TestCaches(unittest.TestCase):
         self._test_adding_data(cache)
         self._test_updating_data(cache)
         self._test_removing_data(cache)
+        self._test_subcache(cache)
         self._test_initializing_local_cache_with_data(cache)
         self._test_rebuild_missing_meta(local=True)
         self._test_clearing_local_cache(cache)
@@ -250,6 +272,7 @@ class TestCaches(unittest.TestCase):
         self._test_adding_data(cache)
         self._test_updating_data(cache)
         self._test_removing_data(cache)
+        self._test_subcache(cache)
         self._test_initializing_s3_cache_with_data(cache)
         self._test_rebuild_missing_meta(local=False)
         self._test_clearing_s3_cache(cache)
@@ -280,8 +303,10 @@ class TestCaches(unittest.TestCase):
         self._test_missing_data(cache)
         self._test_adding_data(cache)
         self._test_updating_data(cache)
+        self._test_subcache(cache)
         self._test_removing_data(cache)
         self._test_multi_cache_sync(cache)
+        self._test_subcache(cache)
 
     @mock_aws
     def _test_multi_cache(self):
