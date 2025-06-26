@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, UTC
 from functools import partial
 from pathlib import Path
 from time import sleep
@@ -191,7 +192,7 @@ class S3Cache(Cache):
         kwargs = dict(active=self.is_active(), read_only=self.is_read_only())
         return self.create(path, reader_writer=self._reader_writer, **kwargs)
 
-    def clear(self, force=False) -> Self:
+    def clear(self, force=False, log_msg: Optional[str] = None) -> Self:
         if self.is_active() and len(self.keys()) > 0:
             if not force:
                 raise RuntimeError(f'Clearing this {type(self).__name__} ({self.path.s3_uri}) requires specifying '
@@ -199,12 +200,14 @@ class S3Cache(Cache):
             logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
             for key in self.keys():
                 self.remove(key)
+            if log_msg:
+                self.write_log_msg(log_msg)
             new_cache = type(self).create(self.path, reader_writer=self._reader_writer)
             self.__init__(new_cache._catalog, new_cache._reader_writer, active=self._active, read_only=self._read_only,
                           log_level=self._log_level)
         return self
 
-    def clear_meta(self, force=False) -> Self:
+    def clear_meta(self, force=False, log_msg: Optional[str] = None) -> Self:
         if self.is_active() and len(self.keys()) > 0:
             if not force:
                 raise RuntimeError(f'Clearing this {type(self).__name__} metadata ({self.path.s3_uri}) requires '
@@ -212,9 +215,32 @@ class S3Cache(Cache):
             logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
             for key in self.keys():
                 self.remove(key, meta_only=True)
+            if log_msg:
+                self.write_log_msg(log_msg)
         return self
 
     def _repr_params(self) -> list[str]:
         params = super()._repr_params()
         params.insert(0, self.path.s3_uri)
         return params
+
+    def read_log(self) -> list[dict]:
+        path = self.path / self._log_filename
+        if not path.exists():
+            logger.debug(f'Log file {path.s3_uri} not found')
+            return []
+        log = s3.read(path, file_type='json')
+        if log:
+            logger.debug(f'Reading {len(log)} messages from Log file {path.s3_uri}')
+            return log
+        else:
+            logger.debug(f'Log file {path.s3_uri} is empty')
+            return []
+
+    def write_log_msg(self, msg: str):
+        path = self.path / self._log_filename
+        log = self.read_log()
+        entry = {'timestamp': datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S %Z'), 'message': str(msg)}
+        log.append(entry)
+        s3.write_to_s3(path, log, file_type='json')
+        logger.debug(f'Logged message to {path.s3_uri}')

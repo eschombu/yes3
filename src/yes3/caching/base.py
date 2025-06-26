@@ -11,6 +11,8 @@ logger = get_logger('caching', level=logging.WARNING)
 
 _NotSpecified = object()
 
+LOG_FILENAME = 'logged_messages.json'  # Default file name for manually logged notes in cache
+
 
 def raise_not_found(key) -> KeyError:
     raise KeyError(f"key '{key}' not found in cache")
@@ -41,11 +43,12 @@ class CachedItemMeta:
 
 
 class CacheCore(metaclass=ABCMeta):
-    def __init__(self, active=True, read_only=False, log_level=None):
+    def __init__(self, active=True, read_only=False, log_level=None, log_filename=LOG_FILENAME):
         self._read_only = read_only
         self._active = active
         self._log_level = None
         self.set_log_level(log_level)
+        self._log_filename = log_filename
 
     def set_log_level(self, level) -> Self:
         if level != self._log_level:
@@ -71,11 +74,11 @@ class CacheCore(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def put(self, key, obj, update=False, meta: Optional[CachedItemMeta] = None):
+    def put(self, key, obj, update=False, meta: Optional[CachedItemMeta] = None, log_msg: Optional[str] = None) -> Self:
         pass
 
     @abstractmethod
-    def remove(self, key):
+    def remove(self, key, log_msg: Optional[str] = None):
         pass
 
     @abstractmethod
@@ -109,14 +112,14 @@ class CacheCore(metaclass=ABCMeta):
         self._read_only = value
         return self
 
-    def update(self, key: str, obj):
+    def update(self, key: str, obj, meta: Optional[CachedItemMeta] = None, log_msg: Optional[str] = None):
         if key not in self:
             raise_not_found(key)
-        self.put(key, obj, update=True)
+        self.put(key, obj, update=True, meta=meta, log_msg=log_msg)
 
-    def pop(self, key: str, default=_NotSpecified):
+    def pop(self, key: str, default=_NotSpecified, log_msg: Optional[str] = None):
         obj = self.get(key, default=default)
-        self.remove(key)
+        self.remove(key, log_msg=log_msg)
         return obj
 
     def list(self) -> dict[str, CachedItemMeta]:
@@ -127,6 +130,12 @@ class CacheCore(metaclass=ABCMeta):
 
     def subcache(self, *args, **kwargs) -> Self:
         raise NotImplementedError(f"`subcache` method is not defined for class {type(self).__name__}")
+
+    def write_log_msg(self, msg: str):
+        raise NotImplementedError(f"`write_log_msg` method is not implemented for class {type(self).__name__}")
+
+    def read_log(self):
+        raise NotImplementedError(f"`read_log` method is not implemented for class {type(self).__name__}")
 
 
 class CacheReaderWriter(metaclass=ABCMeta):
@@ -221,7 +230,8 @@ class Cache(CacheCore, metaclass=ABCMeta):
             self,
             catalog: CacheCatalog,
             reader_writer: CacheReaderWriter,
-            active=True, read_only=False,
+            active=True,
+            read_only=False,
             log_level=None,
     ):
         super().__init__(active=active, read_only=read_only, log_level=log_level)
@@ -251,7 +261,15 @@ class Cache(CacheCore, metaclass=ABCMeta):
             raise_not_found(key)
         return self._catalog.get(key)
 
-    def put(self, key: str, obj, *, update=False, meta: Optional[CachedItemMeta] = None) -> Self:
+    def put(
+            self,
+            key: str,
+            obj,
+            *,
+            update=False,
+            meta: Optional[CachedItemMeta] = None,
+            log_msg: Optional[str] = None,
+    ) -> Self:
         if self.is_read_only():
             raise TypeError('Cache is in read only mode')
         if self.is_active():
@@ -259,20 +277,24 @@ class Cache(CacheCore, metaclass=ABCMeta):
                 raise ValueError(f"key '{key}' already exists in cache; use 'update' to overwrite")
             meta = self._reader_writer.write(key, obj, meta=meta)
             self._catalog.add(key, meta)
+            if log_msg:
+                self.write_log_msg(log_msg)
         else:
             logger.info(f'WARNING: {type(self).__name__} is not active')
         return self
 
-    def remove(self, key: str, meta_only=False) -> Self:
+    def remove(self, key: str, meta_only=False, log_msg: Optional[str] = None) -> Self:
         if self.is_active() and key in self:
             if self.is_read_only():
                 raise TypeError('Cache is in read only mode')
             self._catalog.remove(key)
             self._reader_writer.delete(key, meta_only=meta_only)
+            if log_msg:
+                self.write_log_msg(log_msg)
         return self
 
-    def remove_meta(self, key: str) -> Self:
-        return self.remove(key, meta_only=True)
+    def remove_meta(self, key: str, log_msg: Optional[str] = None) -> Self:
+        return self.remove(key, meta_only=True, log_msg=log_msg)
 
     def keys(self) -> list[str]:
         if not self.is_active():
