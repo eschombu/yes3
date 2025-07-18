@@ -13,6 +13,7 @@ from urllib.parse import quote, unquote, urlparse
 
 import numpy as np
 import pandas as pd
+from boto3.s3.transfer import TransferConfig
 from tqdm import tqdm
 
 from .client import get_client as _get_client
@@ -415,7 +416,7 @@ def _upload_file(local_path: LocalPathLike, location: S3Location, progress=None)
         location = location.join(filename)
     log.info(f'Uploading {local_path} to {location.s3_uri}... ')
     filesize = local_path.stat().st_size
-    transfer_config = YES3_CONFIG.upload_transfer_config
+    transfer_config = YES3_CONFIG.upload_transfer_config or TransferConfig()
     if filesize < transfer_config.multipart_threshold:
         with open(local_path, 'rb') as f:
             _client.put_object(Bucket=location.bucket, Key=location.key, Body=f)

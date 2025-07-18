@@ -1,5 +1,5 @@
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from boto3.s3.transfer import TransferConfig
 
@@ -14,7 +14,7 @@ class YeS3Config:
     log_level: int = logging.WARNING
     progress_mode: str = 'large'
     progress_size_threshold: int | float = 100e6  # bytes
-    upload_transfer_config: TransferConfig = TransferConfig()
+    upload_transfer_config: TransferConfig | None = None
 
     @staticmethod
     def check_progress_mode(value) -> str:
@@ -35,3 +35,8 @@ class YeS3Config:
             if value != root_logger.level:
                 root_logger.setLevel(value)
         super().__setattr__(name, value)
+
+    def __repr__(self):
+        params = {k: v for k, v in asdict(self).items() if v is not None}
+        params_str = ', '.join(f'{k}={v!r}' for k, v in params.items())
+        return f'{type(self).__name__}({params_str})'
