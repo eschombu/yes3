@@ -1,6 +1,8 @@
 from collections import defaultdict
 from typing import Iterator, Optional, Self
 
+from tqdm import tqdm
+
 from yes3 import S3Location
 from yes3.caching import logger
 from yes3.caching.base import CacheCore, CachedItemMeta, check_meta_mismatches, raise_not_found, _NotSpecified
@@ -162,7 +164,7 @@ class MultiCache(CacheCore):
             return list(set(keys))
 
     def sync_now(self) -> Self:
-        for key in self.keys():
+        for key in tqdm(self.keys(), desc='Syncing caches', disable=(not self.is_active())):
             obj = None
             meta = None
             for cache in self:
