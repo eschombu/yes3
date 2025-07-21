@@ -117,7 +117,15 @@ class MultiCache(CacheCore):
                 metadata[key][cache_key] = cache.get_meta(key).to_dict() if key in cache else None
         return dict(metadata)
 
-    def put(self, key: str, obj, *, update=False, meta: Optional[CachedItemMeta] = None) -> Self:
+    def put(
+            self,
+            key: str,
+            obj,
+            *,
+            update=False,
+            meta: Optional[CachedItemMeta] = None,
+            log_msg: Optional[str] = None,
+    ) -> Self:
         if self.is_read_only():
             raise TypeError('Cache is in read only mode')
         if not self.is_active():
@@ -126,7 +134,7 @@ class MultiCache(CacheCore):
         for cache in self:
             if cache.is_read_only():
                 continue
-            cache.put(key, obj, update=update, meta=meta)
+            cache.put(key, obj, update=update, meta=meta, log_msg=log_msg)
             meta = cache.get_meta(key)
             mismatch = self.check_meta_mismatches(key)
             if mismatch and not update:
@@ -135,11 +143,11 @@ class MultiCache(CacheCore):
                 break
         return self
 
-    def remove(self, key) -> Self:
+    def remove(self, key: str, log_msg: Optional[str] = None) -> Self:
         if self.is_active():
             for cache in self:
                 if key in cache:
-                    cache.remove(key)
+                    cache.remove(key, log_msg=log_msg)
         else:
             logger.warning(f"WARNING: {type(self).__name__} is not active")
         return self

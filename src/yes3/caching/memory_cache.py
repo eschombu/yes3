@@ -32,7 +32,15 @@ class MemoryCache(CacheCore):
             raise_not_found(key)
         return self._meta[key]
 
-    def put(self, key: str, obj, *, update=False, meta: Optional[CachedItemMeta] = None) -> Self:
+    def put(
+            self,
+            key: str,
+            obj,
+            *,
+            update=False,
+            meta: Optional[CachedItemMeta] = None,
+            log_msg: Optional[str] = None,
+    ) -> Self:
         if self.is_read_only():
             raise TypeError('Cache is in read only mode')
         if self.is_active():
@@ -44,9 +52,12 @@ class MemoryCache(CacheCore):
             self._data[key] = obj
         else:
             logger.warning(f"WARNING: {type(self).__name__} is not active")
+        if log_msg:
+            logger.warn("Log messages are not persisted in MemoryCache")
+            logger.info(log_msg)
         return self
 
-    def remove(self, key: str) -> Self:
+    def remove(self, key: str, log_msg: Optional[str] = None) -> Self:
         if self.is_active():
             if key in self:
                 if self.is_read_only():

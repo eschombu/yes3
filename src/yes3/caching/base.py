@@ -74,7 +74,15 @@ class CacheCore(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def put(self, key, obj, update=False, meta: Optional[CachedItemMeta] = None, log_msg: Optional[str] = None) -> Self:
+    def put(
+            self,
+            key,
+            obj,
+            *,
+            update=False,
+            meta: Optional[CachedItemMeta] = None,
+            log_msg: Optional[str] = None,
+    ) -> Self:
         pass
 
     @abstractmethod
