@@ -1,10 +1,12 @@
+import json
 import logging
 from abc import ABCMeta, abstractmethod
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime, UTC
+from pathlib import Path
 from typing import Iterable, Iterator, Optional, Self
 
+from yes3 import s3, S3Location
 from yes3.utils.logs import check_level, get_logger
 
 logger = get_logger('caching', level=logging.WARNING)
@@ -18,28 +20,51 @@ def raise_not_found(key) -> KeyError:
     raise KeyError(f"key '{key}' not found in cache")
 
 
-@dataclass
 class CachedItemMeta:
-    key: str
-    path: Optional[str]
-    size: Optional[int]
-    timestamp: Optional[datetime]
-
     _ts_format = '%Y-%m-%d %H:%M:%S.%f %z'
 
-    def __post_init__(self):
-        if isinstance(self.timestamp, float):
-            self.timestamp = datetime.fromtimestamp(self.timestamp, UTC)
-        if isinstance(self.timestamp, str):
-            self.timestamp = datetime.strptime(self.timestamp, self._ts_format)
+    def __init__(
+            self,
+            key: Optional[str] = None,
+            path: Optional[str] = None,
+            size: Optional[int] = None,
+            timestamp: Optional[datetime] = None,
+            load_path: Optional[str | Path | S3Location] = None,
+    ):
+        self.key = key
+        self.path = path
+        self.size = size
+        if isinstance(timestamp, float):
+            self.timestamp = datetime.fromtimestamp(timestamp, UTC)
+        elif isinstance(timestamp, str):
+            self.timestamp = datetime.strptime(timestamp, self._ts_format)
+        else:
+            self.timestamp = timestamp
+        self.load_path = load_path
+
+    def is_loaded(self) -> bool:
+        return self.key is not None
+
+    def load(self) -> Self:
+        if isinstance(self.load_path, S3Location) or (isinstance(self.load_path, str) and s3.is_s3_url(self.load_path)):
+            meta = s3.read(self.load_path, file_type='json')
+        else:
+            with open(self.load_path, 'r') as f:
+                meta = json.load(f)
+        return type(self)(**meta)
 
     def to_dict(self) -> dict:
+        if not self.is_loaded():
+            self.load()
         return {
             'key': self.key,
             'path': self.path,
             'size': self.size,
             'timestamp': self.timestamp.strftime(self._ts_format) if self.timestamp else None,
         }
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({', '.join(f'{k}={v!r}' for k, v in self.to_dict().items())})"
 
 
 class CacheCore(metaclass=ABCMeta):
@@ -221,7 +246,10 @@ class CacheDictCatalog(CacheCatalog):
         self._catalog[str(key)] = meta
 
     def get(self, key: str) -> CachedItemMeta:
-        return self._catalog[str(key)]
+        meta = self._catalog[str(key)]
+        if not meta.is_loaded():
+            meta = meta.load()
+        return meta
 
     def remove(self, key: str):
         self._catalog.pop(str(key))

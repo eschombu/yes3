@@ -170,7 +170,7 @@ class S3Location:
 
     def get_object_metadata(self) -> 'S3Object' | List['S3Object']:
         objects = list_objects(self, return_metadata=True)
-        if self.is_object():
+        if len(objects) == 1 and objects[0].location.key == self.key:
             return objects[0]
         else:
             return objects
@@ -657,7 +657,7 @@ def read(
             elif progress_mode == 'all':
                 with_progress = True
             else:
-                obj_size = list_objects(location, return_metadata=True)[0].size
+                obj_size = list_objects(location, limit=1, return_metadata=True)[0].size
                 with_progress = (obj_size >= progress_size)
 
     ext = Path(location.key).suffix

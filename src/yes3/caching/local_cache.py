@@ -201,7 +201,11 @@ class LocalDiskCache(Cache):
                     else:
                         raise RuntimeError(f'data and metadata files are not aligned for cache at {reader_writer.path}')
             for key in data_map.keys():
-                catalog_dict[key] = reader_writer.get_meta(key, rebuild=(key not in meta_map and rebuild_missing_meta))
+                if key not in meta_map and rebuild_missing_meta:
+                    catalog_dict[key] = reader_writer.get_meta(key, rebuild=True)
+                else:
+                    meta_path = reader_writer.key2path(key, meta=True)
+                    catalog_dict[key] = CachedItemMeta(load_path=meta_path)
         if len(catalog_dict.keys()) > 0:
             logger.info(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path}')
         return catalog_dict

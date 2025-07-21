@@ -93,7 +93,7 @@ class S3ReaderWriter(CacheReaderWriter):
             s3.write_to_s3(meta.to_dict(), meta_path, file_type=self._meta_file_type)
         else:
             meta_path = self.key2path(key, meta=True)
-            meta_dict = s3.read(meta_path, file_type=self._meta_file_type)
+            meta_dict = s3.read(meta_path, file_type=self._meta_file_type, progress=False)
             meta = CachedItemMeta(**meta_dict)
         return meta
 
@@ -126,7 +126,7 @@ class S3Cache(Cache):
             reader_writer: S3ReaderWriter, rebuild_missing_meta=False, retries=1, retry_sec=0.5,
     ) -> dict:
         catalog_dict = {}
-        locations = s3.list_objects(reader_writer.path)
+        locations = sorted(s3.list_objects(reader_writer.path), key=lambda loc: loc.key)
         meta_locs = [loc for loc in locations if loc.key.endswith(reader_writer._meta_ext)]
         data_locs = [loc for loc in locations if loc not in meta_locs]
         data_map = {reader_writer.path2key(loc): loc for loc in data_locs}
@@ -149,7 +149,11 @@ class S3Cache(Cache):
                 else:
                     raise RuntimeError(f'data and metadata files are not aligned for cache at {reader_writer.path}')
         for key in data_map.keys():
-            catalog_dict[key] = reader_writer.get_meta(key, rebuild=(key not in meta_map and rebuild_missing_meta))
+            if key not in meta_map and rebuild_missing_meta:
+                catalog_dict[key] = reader_writer.get_meta(key, rebuild=True)
+            else:
+                meta_path = reader_writer.key2path(key, meta=True)
+                catalog_dict[key] = CachedItemMeta(load_path=meta_path)
         if len(catalog_dict.keys()) > 0:
             logger.info(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path.s3_uri}')
         return catalog_dict
