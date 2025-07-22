@@ -32,9 +32,8 @@ except NameError:
     YES3_CONFIG = YeS3Config()
 
 # TODO:
-#  1. Replace _verbose_print with logger
-#  2. Add overwrite protection options
-#  3. Add some more shortcut methods to S3Location, perhaps some aliases
+#  1. Add overwrite protection options
+#  2. Add some more shortcut methods to S3Location, perhaps some aliases
 
 
 def config(**config_params):

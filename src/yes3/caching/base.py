@@ -9,7 +9,7 @@ from typing import Iterable, Iterator, Optional, Self
 from yes3 import s3, S3Location
 from yes3.utils.logs import check_level, get_logger
 
-logger = get_logger('caching', level=logging.WARNING)
+base_logger = get_logger('caching', level=logging.WARNING)
 
 _NotSpecified = object()
 
@@ -69,18 +69,25 @@ class CachedItemMeta:
 
 class CacheCore(metaclass=ABCMeta):
     def __init__(self, active=True, read_only=False, log_level=None, log_filename=LOG_FILENAME):
+        self._logger = None
         self._read_only = read_only
         self._active = active
         self._log_level = None
         self.set_log_level(log_level)
         self._log_filename = log_filename
 
+    @property
+    def logger(self):
+        if self._logger is None:
+            self._logger = base_logger.getChild(f'{type(self).__name__}<{id(self)}>')
+        return self._logger
+
     def set_log_level(self, level) -> Self:
         if level != self._log_level:
-            logger.info(f"Setting log level to {level}")
+            self.logger.info(f"Setting log level to {level}")
         self._log_level = level
         if level is not None:
-            logger.setLevel(check_level(level))
+            self.logger.setLevel(check_level(level))
         return self
 
     def get_log_level(self) -> Optional[int]:
@@ -188,6 +195,18 @@ class CacheReaderWriter(metaclass=ABCMeta):
     def delete(self, key: str, meta_only=False):
         pass
 
+    def set_logger(self, logger=None) -> Self:
+        if logger is None:
+            logger = base_logger.getChild(f'{type(self).__name__}[{id(self)}]')
+        self._logger = logger
+        return self
+
+    @property
+    def logger(self):
+        if not hasattr(self, '_logger') or self._logger is None:
+            self.set_logger()
+        return self._logger
+
 
 class CacheCatalog(metaclass=ABCMeta):
     @abstractmethod
@@ -270,9 +289,10 @@ class Cache(CacheCore, metaclass=ABCMeta):
             read_only=False,
             log_level=None,
     ):
-        super().__init__(active=active, read_only=read_only, log_level=log_level)
         self._catalog = catalog
         self._reader_writer = reader_writer
+        super().__init__(active=active, read_only=read_only, log_level=log_level)
+        self._reader_writer.set_logger(self.logger)
 
     @classmethod
     @abstractmethod
@@ -316,7 +336,7 @@ class Cache(CacheCore, metaclass=ABCMeta):
             if log_msg:
                 self.write_log_msg(log_msg)
         else:
-            logger.info(f'WARNING: {type(self).__name__} is not active')
+            self.logger.warning(f'WARNING: {type(self).__name__} is not active')
         return self
 
     def remove(self, key: str, meta_only=False, log_msg: Optional[str] = None) -> Self:

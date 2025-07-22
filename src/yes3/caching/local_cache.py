@@ -8,7 +8,7 @@ from pathlib import Path
 from time import sleep
 from typing import Optional, Self
 
-from yes3.caching import logger
+from yes3.caching import base_logger
 from yes3.caching.base import Cache, CacheDictCatalog, CachedItemMeta, Serializer, CacheReaderWriter
 
 
@@ -122,7 +122,7 @@ class LocalReaderWriter(CacheReaderWriter):
 
     def read(self, key: str):
         path = self.key2path(key)
-        logger.info(f"Reading cached item '{key}' at {path}")
+        self.logger.info(f"Reading cached item '{key}' at {path}")
         return self.obj_serializer.read(path)
 
     def _build_meta(self, path, key=None) -> CachedItemMeta:
@@ -150,7 +150,7 @@ class LocalReaderWriter(CacheReaderWriter):
 
     def write(self, key: str, obj, meta: Optional[CachedItemMeta] = None) -> CachedItemMeta:
         obj_path = self.key2path(key)
-        logger.info(f"Caching item '{key}' at {obj_path}")
+        self.logger.info(f"Caching item '{key}' at {obj_path}")
         self.obj_serializer.write(obj_path, obj)
 
         meta_path = self.key2path(key, meta=True)
@@ -163,9 +163,9 @@ class LocalReaderWriter(CacheReaderWriter):
         path = self.key2path(key)
         meta_path = self.key2path(key, meta=True)
         if meta_only:
-            logger.info(f"Deleting cached item '{key}' metadata at {meta_path}")
+            self.logger.info(f"Deleting cached item '{key}' metadata at {meta_path}")
         else:
-            logger.info(f"Deleting cached item '{key}' at {path}")
+            self.logger.info(f"Deleting cached item '{key}' at {path}")
             os.remove(path)
         os.remove(meta_path)
 
@@ -187,7 +187,7 @@ class LocalDiskCache(Cache):
                 if retries:
                     # During parallel processing, there may be a temporary misalignment of data and metadata files,
                     #  retry in case the situation is quickly resolved
-                    logger.warning(
+                    base_logger.warning(
                         f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
                         f'retrying in {retry_sec} seconds')
                     sleep(retry_sec)
@@ -195,7 +195,7 @@ class LocalDiskCache(Cache):
                         reader_writer, rebuild_missing_meta, retries - 1, retry_sec=retry_sec)
                 else:
                     if rebuild_missing_meta:
-                        logger.warning(
+                        base_logger.warning(
                             f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
                             'rebuilding missing metadata files')
                     else:
@@ -207,7 +207,7 @@ class LocalDiskCache(Cache):
                     meta_path = reader_writer.key2path(key, meta=True)
                     catalog_dict[key] = CachedItemMeta(load_path=meta_path)
         if len(catalog_dict.keys()) > 0:
-            logger.info(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path}')
+            base_logger.info(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path}')
         return catalog_dict
 
     @classmethod
@@ -244,7 +244,7 @@ class LocalDiskCache(Cache):
         if self.is_active() and len(self.keys()) > 0:
             if not force:
                 raise RuntimeError(f'Clearing this {type(self).__name__} ({self.path}) requires specifying force=True')
-            logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path}')
+            self.logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path}')
             for key in self.keys():
                 self.remove(key)
             if log_msg:
@@ -259,7 +259,7 @@ class LocalDiskCache(Cache):
             if not force:
                 raise RuntimeError(f'Clearing this {type(self).__name__} metadata ({self.path}) requires specifying '
                                    'force=True')
-            logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path}')
+            self.logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path}')
             for key in self.keys():
                 self.remove(key, meta_only=True)
             if log_msg:
@@ -275,14 +275,14 @@ class LocalDiskCache(Cache):
         serializer = JsonSerializer()
         path = self.path / self._log_filename
         if not path.exists():
-            logger.debug(f'Log file {path} not found')
+            self.logger.debug(f'Log file {path} not found')
             return []
         log = serializer.read(path)
         if log:
-            logger.debug(f'Reading {len(log)} messages from Log file {path}')
+            self.logger.debug(f'Reading {len(log)} messages from Log file {path}')
             return log
         else:
-            logger.debug(f'Log file {path} is empty')
+            self.logger.debug(f'Log file {path} is empty')
             return []
 
     def write_log_msg(self, msg: str):
@@ -292,4 +292,4 @@ class LocalDiskCache(Cache):
         entry = {'timestamp': datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S %Z'), 'message': str(msg)}
         log.append(entry)
         serializer.write(path, log)
-        logger.info(f'Logged message to {path}')
+        self.logger.info(f'Logged message to {path}')

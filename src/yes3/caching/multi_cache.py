@@ -4,7 +4,6 @@ from typing import Iterator, Optional, Self
 from tqdm import tqdm
 
 from yes3 import S3Location
-from yes3.caching import logger
 from yes3.caching.base import CacheCore, CachedItemMeta, check_meta_mismatches, raise_not_found, _NotSpecified
 
 
@@ -98,7 +97,7 @@ class MultiCache(CacheCore):
                 if meta is None:
                     meta = c_meta
                 elif meta != c_meta:
-                    logger.warning(f"WARNING: meta data mismatch in caches for '{key}'")
+                    self.logger.warning(f"WARNING: meta data mismatch in caches for '{key}'")
         if meta is None:
             raise_not_found(key)
         return meta
@@ -131,7 +130,7 @@ class MultiCache(CacheCore):
         if self.is_read_only():
             raise TypeError('Cache is in read only mode')
         if not self.is_active():
-            logger.warning(f"WARNING: {type(self).__name__} is not active")
+            self.logger.warning(f"WARNING: {type(self).__name__} is not active")
             return self
         for cache in self:
             if cache.is_read_only():
@@ -140,7 +139,7 @@ class MultiCache(CacheCore):
             meta = cache.get_meta(key)
             mismatch = self.check_meta_mismatches(key)
             if mismatch and not update:
-                logger.warning(f"WARNING: Metadata mismatch for '{key}'. Use update=True to sync across caches.")
+                self.logger.warning(f"WARNING: Metadata mismatch for '{key}'. Use update=True to sync across caches.")
             if not self._sync_all and not mismatch:
                 break
         return self
@@ -151,7 +150,7 @@ class MultiCache(CacheCore):
                 if key in cache:
                     cache.remove(key, log_msg=log_msg)
         else:
-            logger.warning(f"WARNING: {type(self).__name__} is not active")
+            self.logger.warning(f"WARNING: {type(self).__name__} is not active")
         return self
 
     def keys(self) -> list[str]:

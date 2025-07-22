@@ -6,7 +6,7 @@ from time import sleep
 from typing import Optional, Self
 
 from yes3 import s3
-from yes3.caching import logger
+from yes3.caching import base_logger
 from yes3.caching.base import Cache, CacheDictCatalog, CachedItemMeta, CacheReaderWriter
 from yes3.s3 import S3Location
 
@@ -70,7 +70,7 @@ class S3ReaderWriter(CacheReaderWriter):
     def read(self, key: str, file_type=None):
         file_type = file_type or self._file_type
         path = self.key2path(key)
-        logger.info(f"Reading cached item '{key}' at {path.s3_uri}")
+        self.logger.info(f"Reading cached item '{key}' at {path.s3_uri}")
         return s3.read(path, file_type=file_type)
 
     def _build_meta(self, path, key=None) -> CachedItemMeta:
@@ -100,7 +100,7 @@ class S3ReaderWriter(CacheReaderWriter):
     def write(self, key: str, obj, meta: Optional[CachedItemMeta] = None, file_type=None) -> CachedItemMeta:
         file_type = file_type or self._file_type
         obj_path = self.key2path(key)
-        logger.info(f"Caching item '{key}' at {obj_path.s3_uri}")
+        self.logger.info(f"Caching item '{key}' at {obj_path.s3_uri}")
         s3.write_to_s3(obj, obj_path, file_type=file_type, progress=self._progress)
 
         meta_path = self.key2path(key, meta=True)
@@ -113,9 +113,9 @@ class S3ReaderWriter(CacheReaderWriter):
         path = self.key2path(key)
         meta_path = self.key2path(key, meta=True)
         if meta_only:
-            logger.info(f"Deleting cached item '{key}' metadata at {meta_path.s3_uri}")
+            self.logger.info(f"Deleting cached item '{key}' metadata at {meta_path.s3_uri}")
         else:
-            logger.info(f"Deleting cached item '{key}' at {path.s3_uri}")
+            self.logger.info(f"Deleting cached item '{key}' at {path.s3_uri}")
             s3.delete(path)
         s3.delete(meta_path)
 
@@ -135,7 +135,7 @@ class S3Cache(Cache):
             if retries:
                 # During parallel processing, there may be a temporary misalignment of data and metadata files,
                 #  retry in case the situation is quickly resolved
-                logger.warning(
+                base_logger.warning(
                     f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
                     f'retrying in {retry_sec} seconds')
                 sleep(retry_sec)
@@ -143,7 +143,7 @@ class S3Cache(Cache):
                     reader_writer, rebuild_missing_meta, retries - 1, retry_sec=retry_sec)
             else:
                 if rebuild_missing_meta:
-                    logger.warning(
+                    base_logger.warning(
                         f'WARNING: data and metadata files are not aligned for cache at {reader_writer.path}, '
                         'rebuilding missing metadata files')
                 else:
@@ -155,7 +155,7 @@ class S3Cache(Cache):
                 meta_path = reader_writer.key2path(key, meta=True)
                 catalog_dict[key] = CachedItemMeta(load_path=meta_path)
         if len(catalog_dict.keys()) > 0:
-            logger.info(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path.s3_uri}')
+            base_logger.info(f'{len(catalog_dict.keys())} cached items discovered at {reader_writer.path.s3_uri}')
         return catalog_dict
 
     @classmethod
@@ -201,7 +201,7 @@ class S3Cache(Cache):
             if not force:
                 raise RuntimeError(f'Clearing this {type(self).__name__} ({self.path.s3_uri}) requires specifying '
                                    'force=True')
-            logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
+            self.logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
             for key in self.keys():
                 self.remove(key)
             if log_msg:
@@ -216,7 +216,7 @@ class S3Cache(Cache):
             if not force:
                 raise RuntimeError(f'Clearing this {type(self).__name__} metadata ({self.path.s3_uri}) requires '
                                    'specifying force=True')
-            logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
+            self.logger.info(f'Deleting {len(self.keys())} item(s) from cache at {self.path.s3_uri}')
             for key in self.keys():
                 self.remove(key, meta_only=True)
             if log_msg:
@@ -231,14 +231,14 @@ class S3Cache(Cache):
     def read_log(self) -> list[dict]:
         path = self.path / self._log_filename
         if not path.exists():
-            logger.debug(f'Log file {path.s3_uri} not found')
+            self.logger.debug(f'Log file {path.s3_uri} not found')
             return []
         log = s3.read(path, file_type='json')
         if log:
-            logger.debug(f'Reading {len(log)} messages from Log file {path.s3_uri}')
+            self.logger.debug(f'Reading {len(log)} messages from Log file {path.s3_uri}')
             return log
         else:
-            logger.debug(f'Log file {path.s3_uri} is empty')
+            self.logger.debug(f'Log file {path.s3_uri} is empty')
             return []
 
     def write_log_msg(self, msg: str):
@@ -247,4 +247,4 @@ class S3Cache(Cache):
         entry = {'timestamp': datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S %Z'), 'message': str(msg)}
         log.append(entry)
         s3.write_to_s3(path, log, file_type='json')
-        logger.debug(f'Logged message to {path.s3_uri}')
+        self.logger.debug(f'Logged message to {path.s3_uri}')
