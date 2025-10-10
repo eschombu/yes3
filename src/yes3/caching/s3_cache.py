@@ -192,7 +192,7 @@ class S3Cache(Cache):
         return self._reader_writer.path
 
     def subcache(self, rel_path: str) -> Self:
-        path = self.path / rel_path
+        path = self.path / str(rel_path)
         kwargs = dict(active=self.is_active(), read_only=self.is_read_only())
         return self.create(path, reader_writer=self._reader_writer, **kwargs)
 
