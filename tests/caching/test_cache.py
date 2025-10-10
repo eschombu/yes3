@@ -97,6 +97,8 @@ class TestCaches(unittest.TestCase):
         start_meta = cache.get_meta(key)
         if isinstance(cache, S3Cache):
             sleep(1)  # S3 object timestamp only has precision to nearest second
+        else:
+            sleep(0.1)  # Ensure timestamp will be different
         cache.update(key, updated_data)
         retrieved = cache.get(key)
         new_meta = cache.get_meta(key)
