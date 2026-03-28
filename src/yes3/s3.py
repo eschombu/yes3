@@ -14,7 +14,7 @@ from urllib.parse import quote, unquote, urlparse
 import numpy as np
 import pandas as pd
 from boto3.s3.transfer import TransferConfig
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from .client import get_client as _get_client
 from .config import YeS3Config

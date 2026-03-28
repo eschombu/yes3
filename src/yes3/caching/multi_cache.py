@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Iterator, Optional, Self
 
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 from yes3 import S3Location
 from yes3.caching.base import CacheCore, CachedItemMeta, check_meta_mismatches, raise_not_found, _NotSpecified
