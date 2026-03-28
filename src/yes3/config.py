@@ -1,5 +1,5 @@
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 from boto3.s3.transfer import TransferConfig
 
@@ -14,7 +14,7 @@ class YeS3Config:
     log_level: int = logging.WARNING
     progress_mode: str = 'large'
     progress_size_threshold: int | float = 100e6  # bytes
-    upload_transfer_config: TransferConfig | None = None
+    upload_transfer_config: TransferConfig | None = field(default_factory=lambda: TransferConfig(multipart_threshold=100e6))
 
     @staticmethod
     def check_progress_mode(value) -> str:
