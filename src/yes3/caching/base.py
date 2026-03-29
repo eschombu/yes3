@@ -63,6 +63,11 @@ class CachedItemMeta:
             'timestamp': self.timestamp.strftime(self._ts_format) if self.timestamp else None,
         }
 
+    def __eq__(self, other):
+        if not isinstance(other, dict):
+            other = other.to_dict()
+        return self.to_dict() == other
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}({', '.join(f'{k}={v!r}' for k, v in self.to_dict().items())})"
 
