@@ -13,8 +13,17 @@ class YeS3Config:
     default_region: str = 'us-east-2'
     log_level: int = logging.WARNING
     progress_mode: str = 'large'
-    progress_size_threshold: int | float = 100e6  # bytes
-    upload_transfer_config: TransferConfig | None = field(default_factory=lambda: TransferConfig(multipart_threshold=100e6))
+    progress_size_threshold: int | float = 10e6  # bytes
+    multipart_threshold: int | float = 10e6
+    transfer_config: TransferConfig | dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        if isinstance(self.transfer_config, TransferConfig):
+            self.transfer_config = self.transfer_config
+        else:
+            transfer_cfg = {'multipart_threshold': self.multipart_threshold}
+            transfer_cfg.update(self.transfer_config)
+            self.transfer_config = TransferConfig(**transfer_cfg)
 
     @staticmethod
     def check_progress_mode(value) -> str:

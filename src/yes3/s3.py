@@ -415,7 +415,7 @@ def _upload_file(local_path: LocalPathLike, location: S3Location, progress=None)
         location = location.join(filename)
     log.info(f'Uploading {local_path} to {location.s3_uri}... ')
     filesize = local_path.stat().st_size
-    transfer_config = YES3_CONFIG.upload_transfer_config or TransferConfig()
+    transfer_config = YES3_CONFIG.transfer_config or TransferConfig()
     if filesize < transfer_config.multipart_threshold:
         with open(local_path, 'rb') as f:
             _client.put_object(Bucket=location.bucket, Key=location.key, Body=f)
@@ -540,7 +540,8 @@ def _download_object(location: S3Location, local_path: LocalPathLike, progress=N
         os.makedirs(local_path.parent, exist_ok=True)
     log.info(f'Downloading {location.s3_uri} to {local_path}... ')
     callback = _get_download_prog_callback(progress, location)
-    _client.download_file(location.bucket, location.key, str(local_path), Callback=callback)
+    transfer_config = YES3_CONFIG.transfer_config or TransferConfig()
+    _client.download_file(location.bucket, location.key, str(local_path), Config=transfer_config, Callback=callback)
     log.info(f'Downloaded {location.s3_uri} to {local_path}')
     return local_path
 
