@@ -744,11 +744,19 @@ def touch(bucket_or_location: S3LocationLike, prefix: Optional[str] = None):
 
 
 @timeit_opt(default=True)
-def large_recursive_delete(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, timeit=True):
+def large_recursive_delete(
+        bucket_or_location: S3LocationLike,
+        prefix: Optional[str] = None,
+        timeit=True,
+        raise_if_missing=True,
+) -> None:
     """See https://serverfault.com/a/1123717"""
     location = as_s3_location(bucket_or_location, prefix)
     if not location.exists():
-        raise FileNotFoundError(f'No object(s) at {location.s3_uri}')
+        if raise_if_missing:
+            raise FileNotFoundError(f'No object(s) at {location.s3_uri}')
+        else:
+            return
     elif location.is_object():
         raise ValueError(f'{location.s3_uri} is an object, not a prefix; use `delete` instead')
     else:
@@ -759,21 +767,27 @@ def large_recursive_delete(bucket_or_location: S3LocationLike, prefix: Optional[
                ).format(bucket=location.bucket, prefix=location.key)
     if timeit:
         print(f'Starting recursive delete with prefix {location.s3_uri} at {datetime.now().isoformat()}')
-    os.system(cmd)
+    output = subprocess.run(cmd, shell=True, capture_output=True)
+    if "aws: command not found" in output.stderr.decode():
+        raise RuntimeError("This function depends on the aws cli, but it is not installed; please install it first.")
+    return
 
 
 @timeit_opt(default=True)
 def list_many_objects(bucket_or_location: S3LocationLike, prefix: Optional[str] = None, timeit=True) -> list[str]:
     location = as_s3_location(bucket_or_location, prefix)
     if not location.exists():
-        raise FileNotFoundError(f'No object(s) at {location.s3_uri}')
+        objects = []
     elif location.is_object():
-        return [location.s3_uri]
+        objects = [location.s3_uri]
     else:
         cmd = ("aws s3api list-objects-v2 --bucket {bucket} --prefix {prefix} --output text --query 'Contents[].[Key]'"
                ).format(bucket=location.bucket, prefix=location.key)
-    if timeit:
-        print(f'Starting list-objects call with prefix {location.s3_uri} at {datetime.now().isoformat()}')
-    output = subprocess.run(cmd, shell=True, capture_output=True)
-    keys = output.stdout.decode().split()
-    return [as_s3_location(location.bucket, k).s3_uri for k in keys]
+        if timeit:
+            print(f'Starting list-objects call with prefix {location.s3_uri} at {datetime.now().isoformat()}')
+        output = subprocess.run(cmd, shell=True, capture_output=True)
+        if "aws: command not found" in output.stderr.decode():
+            raise RuntimeError("This function depends on the aws cli, but it is not installed; please install it first.")
+        keys = output.stdout.decode().split()
+        objects = [as_s3_location(location.bucket, k).s3_uri for k in keys]
+    return objects
