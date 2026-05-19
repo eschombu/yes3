@@ -32,7 +32,7 @@ def setup_cache(
         sync=False,
         rebuild_missing_metadata=False,
         log_level=None,
-) -> CacheCore | None:
+) -> CacheCore:
     caches = []
     if in_memory:
         caches.append(setup_single_cache(in_memory=in_memory))
@@ -44,11 +44,11 @@ def setup_cache(
             else:
                 caches.append(setup_single_cache(path, rebuild_missing_metadata=rebuild_missing_metadata))
     if len(caches) == 0:
-        cache = None
+        raise ValueError('At least one cache path must be provided, or in_memory must be True')
     elif len(caches) == 1:
         cache = caches[0]
     else:
         cache = MultiCache(caches, sync_all=sync)
-    if cache is not None and log_level is not None:
+    if log_level is not None:
         cache.set_log_level(log_level)
     return cache
