@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yes3"
-version = "0.1.5"
+version = "0.1.6"
 authors = [
   { name="Erik Schomburg", email="eschomburg@gmail.com" },
 ]
@@ -37,5 +37,3 @@ testpaths = ["tests"]
 [project.urls]
 Homepage = "https://github.com/eschombu/yes3"
 Issues = "https://github.com/eschombu/yes3/issues"
-
-
