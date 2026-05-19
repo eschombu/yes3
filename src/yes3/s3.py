@@ -129,8 +129,14 @@ class S3Location:
         return self.key is None or len(self.key) == 0
 
     def is_object(self) -> bool:
-        objects = list_objects(self, limit=2)
-        return len(objects) == 1 and objects[0].key == self.key
+        objects = list_objects(self, limit=2, return_metadata=False)
+        if len(objects) == 0:
+            return False
+        elif len(objects) == 1:
+            return objects[0].key == self.key
+        else:
+            objects = list_objects(self, exact=True)
+            return len(objects) == 1
 
     def is_dir(self) -> bool:
         if not self.exists():
@@ -254,6 +260,7 @@ def as_s3_location(bucket_or_location: S3LocationLike, key: Optional[str] = None
 def list_objects(
         bucket_or_location: S3LocationLike,
         prefix: Optional[str] = None,
+        exact: bool = False,
         limit: Optional[int] = None,
         return_metadata: bool = False,
 ) -> list[S3Location | S3Object]:
@@ -269,6 +276,12 @@ def list_objects(
         next_token = resp.get('NextContinuationToken')
         contents = resp.get('Contents', [])
         parsed_contents = [S3Object.from_dict(location.bucket, d) for d in contents]
+        if exact:
+            for result in parsed_contents:
+                if result.location == location:
+                    parsed_contents = [result]
+                    next_token = None
+                    break
         return next_token, parsed_contents
 
     token, results = get_next_page()
@@ -657,7 +670,7 @@ def read(
             elif progress_mode == 'all':
                 with_progress = True
             else:
-                obj_size = list_objects(location, limit=1, return_metadata=True)[0].size
+                obj_size = list_objects(location, exact=True, return_metadata=True)[0].size
                 with_progress = (obj_size >= progress_size)
 
     ext = Path(location.key).suffix

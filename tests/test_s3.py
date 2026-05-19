@@ -84,6 +84,12 @@ def _test_single_uploads():
     assert dir_loc.is_dir() is True
     assert dir_loc.is_object() is False
 
+    file_loc_2 = s3.upload(TEST_LOCAL_DIR / 'dir1/file1.1.txt', s3_dir_loc.join('dir1/file2'))
+    assert len(s3.list_objects(file_loc)) == 2
+    assert file_loc.is_object() is True
+    assert file_loc.is_dir() is False
+    assert file_loc_2.is_object() is True
+
 
 def _test_delete():
     s3_dir_loc = s3.S3Location(TEST_S3_DIR)
@@ -93,6 +99,7 @@ def _test_delete():
     assert file_loc.exists() is False
 
     s3.delete(s3_dir_loc.bucket, s3_dir_loc.join('dir1', 'file').key)
+    s3.delete(s3_dir_loc.bucket, s3_dir_loc.join('dir1', 'file2').key)
     assert len(s3.list_objects(TEST_S3_DIR)) == 0
 
 
