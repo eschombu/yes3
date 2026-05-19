@@ -276,18 +276,18 @@ def list_objects(
         next_token = resp.get('NextContinuationToken')
         contents = resp.get('Contents', [])
         parsed_contents = [S3Object.from_dict(location.bucket, d) for d in contents]
-        if exact:
-            for result in parsed_contents:
-                if result.location == location:
-                    parsed_contents = [result]
-                    next_token = None
-                    break
         return next_token, parsed_contents
 
     token, results = get_next_page()
-    while token is not None and (limit is None or len(results) < limit):
-        token, next_results = get_next_page(token)
-        results += next_results
+    if exact:
+        if len(results) > 0 and results[0].location == location:
+            results = results[:1]
+        else:
+            results = []
+    else:
+        while token is not None and (limit is None or len(results) < limit):
+            token, next_results = get_next_page(token)
+            results += next_results
 
     if limit is not None and limit >= 0:
         results = results[:limit]
