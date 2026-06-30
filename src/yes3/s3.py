@@ -744,6 +744,44 @@ def touch(bucket_or_location: S3LocationLike, prefix: Optional[str] = None):
     log.info(f'Created empty object at {location.s3_uri}')
 
 
+"""============================================================================
+The functions below rely on either s5cmd or the aws cli being installed within
+the environment, calling them via subprocess.
+============================================================================"""
+
+
+def _check_dependency_error(output, command: str, package_name: Optional[str] = None) -> None:
+    if package_name is None:
+        package_name = command
+    if f"{command}: command not found" in output.stderr.decode():
+        msg = f"This function depends on {package_name}, but it is not installed; please install it first."
+        raise RuntimeError(msg)
+
+
+def _large_recursive_delete_s3api(location: S3Location) -> None:
+    """See https://serverfault.com/a/1123717"""
+    cmd = ("""aws s3api list-objects-v2 --bucket {bucket} --prefix {prefix} --output text --query """
+           """'Contents[].[Key]' | grep -v -e "'" | tr '\\n' '\\0' | xargs -0 -P2 -n500 bash -c """
+           """'aws s3api delete-objects --bucket {bucket} --delete """
+           """"Objects=[$(printf "{{Key=%q}}," "$@")],Quiet=true"' _ """
+           ).format(bucket=location.bucket, prefix=location.key)
+    output = subprocess.run(cmd, shell=True, capture_output=True)
+    _check_dependency_error(output, 'aws', 'the aws cli')
+    return
+
+
+def _large_recursive_delete_s5cmd(location: S3Location) -> None:
+    prefix = location.s3_uri
+    if not prefix.endswith('/'):
+        prefix += '/'
+    if not prefix.endswith('*'):
+        prefix += '*'
+    cmd = f"s5cmd rm {prefix}"
+    output = subprocess.run(cmd, shell=True, capture_output=True)
+    _check_dependency_error(output, 's5cmd')
+    return
+
+
 @timeit_opt(default=True)
 def large_recursive_delete(
         bucket_or_location: S3LocationLike,
@@ -751,7 +789,6 @@ def large_recursive_delete(
         timeit=True,
         raise_if_missing=True,
 ) -> None:
-    """See https://serverfault.com/a/1123717"""
     location = as_s3_location(bucket_or_location, prefix)
     if not location.exists():
         if raise_if_missing:
@@ -760,18 +797,39 @@ def large_recursive_delete(
             return
     elif location.is_object():
         raise ValueError(f'{location.s3_uri} is an object, not a prefix; use `delete` instead')
-    else:
-        cmd = ("""aws s3api list-objects-v2 --bucket {bucket} --prefix {prefix} --output text --query """
-               """'Contents[].[Key]' | grep -v -e "'" | tr '\\n' '\\0' | xargs -0 -P2 -n500 bash -c """
-               """'aws s3api delete-objects --bucket {bucket} --delete """
-               """"Objects=[$(printf "{{Key=%q}}," "$@")],Quiet=true"' _ """
-               ).format(bucket=location.bucket, prefix=location.key)
     if timeit:
         print(f'Starting recursive delete with prefix {location.s3_uri} at {datetime.now().isoformat()}')
+    try:
+        log.debug(f"attempting to delete objects with prefix {location.s3_uri} using s5cmd")
+        _large_recursive_delete_s5cmd(location)
+    except RuntimeError:
+        try:
+            log.debug(f"s5cmd failed; attempting to delete objects with prefix {location.s3_uri} using aws s3api")
+            _large_recursive_delete_s3api(location)
+        except RuntimeError:
+            raise RuntimeError(f"Either s5cmd or awscli must be installed")
+
+
+def _list_many_objects_s3api(location: S3Location) -> list[str]:
+    cmd = ("aws s3api list-objects-v2 --bucket {bucket} --prefix {prefix} --output text --query 'Contents[].[Key]'"
+          ).format(bucket=location.bucket, prefix=location.key)
     output = subprocess.run(cmd, shell=True, capture_output=True)
-    if "aws: command not found" in output.stderr.decode():
-        raise RuntimeError("This function depends on the aws cli, but it is not installed; please install it first.")
-    return
+    _check_dependency_error(output, 'aws', 'the aws cli')
+    keys = output.stdout.decode().split()
+    return [as_s3_location(location.bucket, k).s3_uri for k in keys]
+
+
+def _list_many_objects_s5cmd(location: S3Location) -> list[str]:
+    prefix = location.s3_uri
+    if not prefix.endswith('/'):
+        prefix += '/'
+    if not prefix.endswith('*'):
+        prefix += '*'
+    cmd = f"s5cmd ls {prefix}"
+    output = subprocess.run(cmd, shell=True, capture_output=True)
+    _check_dependency_error(output, 's5cmd')
+    keys = [line.split()[-1] for line in output.stdout.decode().split('\n') if line]
+    return [as_s3_location(location.bucket, k).s3_uri for k in keys]
 
 
 @timeit_opt(default=True)
@@ -782,13 +840,15 @@ def list_many_objects(bucket_or_location: S3LocationLike, prefix: Optional[str] 
     elif location.is_object():
         objects = [location.s3_uri]
     else:
-        cmd = ("aws s3api list-objects-v2 --bucket {bucket} --prefix {prefix} --output text --query 'Contents[].[Key]'"
-               ).format(bucket=location.bucket, prefix=location.key)
         if timeit:
             print(f'Starting list-objects call with prefix {location.s3_uri} at {datetime.now().isoformat()}')
-        output = subprocess.run(cmd, shell=True, capture_output=True)
-        if "aws: command not found" in output.stderr.decode():
-            raise RuntimeError("This function depends on the aws cli, but it is not installed; please install it first.")
-        keys = output.stdout.decode().split()
-        objects = [as_s3_location(location.bucket, k).s3_uri for k in keys]
+        try:
+            log.debug(f"attempting to list objects with prefix {location.s3_uri} using s5cmd")
+            objects = _list_many_objects_s5cmd(location)
+        except RuntimeError:
+            try:
+                log.debug(f"s5cmd failed; attempting to list objects with prefix {location.s3_uri} using aws s3api")
+                objects = _list_many_objects_s3api(location)
+            except RuntimeError:
+                raise RuntimeError(f"Either s5cmd or awscli must be installed")
     return objects
