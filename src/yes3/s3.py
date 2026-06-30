@@ -75,7 +75,8 @@ class S3Location:
     def __eq__(self, other) -> bool:
         if isinstance(other, S3Location):  # not using type(self) in case comparing different subclasses of S3Location
             return ((self.bucket == other.bucket) and
-                    ((self.key is None and other.key is None) or (self.key.rstrip('/') == other.key.rstrip('/'))))
+                    ((self.key is None and other.key is None)
+                     or ((self.key or '').rstrip('/') == (other.key or '').rstrip('/'))))
         elif isinstance(other, str):
             return self == type(self).parse(other)
         else:
@@ -152,7 +153,7 @@ class S3Location:
     def is_dir_path(self) -> bool:
         if self.is_bucket():
             return True
-        if self.key.endswith('/'):
+        if (self.key or '').endswith('/'):
             return True
         return self.is_dir()
 
@@ -266,7 +267,7 @@ def list_objects(
 ) -> list[S3Location | S3Object]:
     location = as_s3_location(bucket_or_location, prefix)
 
-    def get_next_page(cont_token=None) -> [Optional[str], list[S3Object]]:
+    def get_next_page(cont_token=None) -> tuple[Optional[str], list[S3Object]]:
         args = dict(Bucket=location.bucket, Prefix=location.key)
         if limit is not None and limit >= 0:
             args['MaxKeys'] = int(limit)
@@ -534,7 +535,7 @@ def _get_download_prog_callback(progress_arg, location: S3Location):
     if progress_mode == 'large' and obj_size < progress_size:
         return
 
-    pbar = tqdm(total=obj_size, desc=f"Downloading {obj_meta.location.key.rsplit('/', 1)[-1]}")
+    pbar = tqdm(total=obj_size, desc=f"Downloading {(obj_meta.location.key or '').rsplit('/', 1)[-1]}")
 
     def f(size):
         pbar.update(size)
@@ -588,7 +589,7 @@ def download(
         return str(p)
     else:
         objects = list_objects(location)
-        common_dir = _highest_common_dir([loc.key for loc in objects], resolve=False)
+        common_dir = _highest_common_dir([loc.key for loc in objects if loc.key], resolve=False)
         if base_dir is None:
             base_dir = common_dir
         else:
@@ -598,7 +599,7 @@ def download(
 
         local_paths = []
         for loc in objects:
-            rel_dir = Path(loc.key).relative_to(base_dir).parent
+            rel_dir = Path(loc.key or '').relative_to(base_dir).parent
             rel_path = local_path / str(rel_dir) / loc.split_key()[1]
             p = _download_object(loc, rel_path, progress=progress)
             local_paths.append(str(p))
@@ -673,7 +674,7 @@ def read(
                 obj_size = list_objects(location, exact=True, return_metadata=True)[0].size
                 with_progress = (obj_size >= progress_size)
 
-    ext = Path(location.key).suffix
+    ext = Path(location.key or '').suffix
     if file_type is None and ext:
         file_type = ext.lstrip('.')
     if file_type is not None:
@@ -702,14 +703,14 @@ def write_to_s3(
         file_type: Optional[str] = None,
         progress=None,
         **kwargs
-) -> S3Location:
+) -> S3Location | list[S3Location]:
     s3_loc = S3Location(bucket_or_path, key)
 
     if not local_temp_file:
         local_temp_file = f"TMPFILE.{datetime.now().strftime('%Y%m%dT%H%M%S.%f')}"
 
     if file_type is None:
-        file_type = os.path.splitext(s3_loc.key)[1].lstrip('.').lower()
+        file_type = os.path.splitext(s3_loc.key or '')[1].lstrip('.').lower()
     if not file_type:
         file_type = 'pkl'
 
