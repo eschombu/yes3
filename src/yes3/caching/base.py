@@ -200,6 +200,26 @@ class CacheReaderWriter(metaclass=ABCMeta):
     def delete(self, key: str, meta_only=False):
         pass
 
+    def check_key(self, key) -> str:
+        """The key as stored, as a str; raises ValueError if it would not be found again.
+
+        The catalog is rebuilt from the stored paths, so a key must survive ``key2path`` then
+        ``path2key`` unchanged. One that does not (a '/' in a local cache's key, or a key ending
+        in the file extension) would be written, found in this session, and then never found
+        after a restart.
+        """
+        key = str(key)
+        if not (hasattr(self, 'key2path') and hasattr(self, 'path2key')):
+            return key
+        for meta in (False, True):
+            back = self.path2key(self.key2path(key, meta=meta))
+            if back != key:
+                raise ValueError(
+                    f"cache key {key!r} cannot be stored: its file {self.key2path(key, meta=meta)} would be "
+                    f"read back as key {back!r}. Keys become file names; use one without path separators "
+                    f"or the file extension.")
+        return key
+
     def set_logger(self, logger=None) -> Self:
         if logger is None:
             logger = base_logger.getChild(f'{type(self).__name__}[{id(self)}]')
@@ -315,7 +335,7 @@ class Cache(CacheCore, metaclass=ABCMeta):
                 raise_not_found(key)
             else:
                 return default
-        return self._reader_writer.read(key)
+        return self._reader_writer.read(str(key))
 
     def get_meta(self, key: str) -> CachedItemMeta:
         if not self.is_active() or key not in self:
@@ -334,6 +354,7 @@ class Cache(CacheCore, metaclass=ABCMeta):
         if self.is_read_only():
             raise TypeError('Cache is in read only mode')
         if self.is_active():
+            key = self._reader_writer.check_key(key)
             if key in self and not update:
                 raise ValueError(f"key '{key}' already exists in cache; use 'update' to overwrite")
             meta = self._reader_writer.write(key, obj, meta=meta)
@@ -349,7 +370,7 @@ class Cache(CacheCore, metaclass=ABCMeta):
             if self.is_read_only():
                 raise TypeError('Cache is in read only mode')
             self._catalog.remove(key)
-            self._reader_writer.delete(key, meta_only=meta_only)
+            self._reader_writer.delete(str(key), meta_only=meta_only)
             if log_msg:
                 self.write_log_msg(log_msg)
         return self

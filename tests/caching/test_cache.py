@@ -1,5 +1,6 @@
 import os.path
 import shutil
+import tempfile
 import unittest
 from pathlib import Path
 from time import sleep
@@ -329,6 +330,47 @@ class TestCaches(unittest.TestCase):
             raise
         finally:
             _cleanup_local()
+
+
+class TestCacheKeys(unittest.TestCase):
+    """A stored key must be found again by a cache rebuilt from the same location."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self._tmp.name) / 'cache'
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_a_local_key_with_a_path_separator_is_refused(self):
+        cache = LocalDiskCache.create(self.dir)
+        with self.assertRaises(ValueError):
+            cache.put("('mesh', 's3://bucket/volume', 1)", data)
+        self.assertEqual(cache.keys(), [])
+        self.assertEqual(list(self.dir.rglob('*.pkl')), [])
+
+    def test_a_local_key_ending_in_the_file_extension_is_refused(self):
+        cache = LocalDiskCache.create(self.dir)
+        with self.assertRaises(ValueError):
+            cache.put('item.pkl', data)
+
+    def test_non_str_keys_are_stored_as_str_and_found_after_a_rebuild(self):
+        cache = LocalDiskCache.create(self.dir)
+        cache.put(7, data)
+        cache.put(('mesh', 1, 2), updated_data)
+        rebuilt = LocalDiskCache.create(self.dir)
+        self.assertEqual(sorted(rebuilt.keys()), sorted(['7', "('mesh', 1, 2)"]))
+        self.assertEqual(rebuilt.get(7), data)
+        self.assertEqual(rebuilt.get(('mesh', 1, 2)), updated_data)
+
+    @mock_aws
+    def test_an_s3_key_with_a_path_separator_round_trips(self):
+        s3._client.create_bucket(Bucket=TEST_BUCKET)
+        cache = S3Cache.create(TEST_S3_DIR)
+        cache.put('group/item', data)
+        rebuilt = S3Cache.create(TEST_S3_DIR)
+        self.assertIn('group/item', rebuilt)
+        self.assertEqual(rebuilt.get('group/item'), data)
 
 
 if __name__ == '__main__':
