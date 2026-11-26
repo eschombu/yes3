@@ -90,7 +90,7 @@ class S3ReaderWriter(CacheReaderWriter):
             obj_path = self.key2path(key)
             meta_path = self.key2path(key, meta=True)
             meta = self._build_meta(path=obj_path, key=key)
-            s3.write_to_s3(meta.to_dict(), meta_path, file_type=self._meta_file_type)
+            s3.write(meta.to_dict(), meta_path, file_type=self._meta_file_type)
         else:
             meta_path = self.key2path(key, meta=True)
             meta_dict = s3.read(meta_path, file_type=self._meta_file_type, progress=False)
@@ -101,12 +101,12 @@ class S3ReaderWriter(CacheReaderWriter):
         file_type = file_type or self._file_type
         obj_path = self.key2path(key)
         self.logger.info(f"Caching item '{key}' at {obj_path.s3_uri}")
-        s3.write_to_s3(obj, obj_path, file_type=file_type, progress=self._progress)
+        s3.write(obj, obj_path, file_type=file_type, progress=self._progress)
 
         meta_path = self.key2path(key, meta=True)
         if meta is None:
             meta = self._build_meta(path=obj_path, key=key)
-        s3.write_to_s3(meta.to_dict(), meta_path, file_type=self._meta_file_type)
+        s3.write(meta.to_dict(), meta_path, file_type=self._meta_file_type)
         return meta
 
     def delete(self, key: str, meta_only=False):
@@ -246,5 +246,5 @@ class S3Cache(Cache):
         log = self.read_log()
         entry = {'timestamp': datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S %Z'), 'message': str(msg)}
         log.append(entry)
-        s3.write_to_s3(path, log, file_type='json')
+        s3.write(path, log, file_type='json')
         self.logger.debug(f'Logged message to {path.s3_uri}')

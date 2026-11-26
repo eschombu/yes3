@@ -695,7 +695,7 @@ def read(
         return read_body(body)
 
 
-def write_to_s3(
+def write(
         obj,
         bucket_or_path: str | S3Location,
         key: Optional[str] = None,
@@ -736,6 +736,10 @@ def write_to_s3(
     log.info(f'Deleting {local_temp_file}')
     os.remove(local_temp_file)
     return written_loc
+
+def write_to_s3(*args, **kwargs):
+    log.warning("`write_to_s3` is deprecated, it is being replaced by `write`")
+    return write(*args, **kwargs)
 
 
 def touch(bucket_or_location: S3LocationLike, prefix: Optional[str] = None):

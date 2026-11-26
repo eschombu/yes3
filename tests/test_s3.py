@@ -172,7 +172,7 @@ def _test_download():
 def _test_write_read():
     contents = {'a': 42, 'b': list(range(10)), 'c': None}
     s3_path = s3.S3Location(TEST_S3_DIR).join('test_write_file.pkl')
-    s3.write_to_s3(contents, s3_path)
+    s3.write(contents, s3_path)
     read_contents = s3.read(s3_path)
     assert contents == read_contents
 
