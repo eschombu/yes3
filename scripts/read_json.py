@@ -2,6 +2,7 @@
 
 import click
 import json
+import os
 
 from yes3 import s3
 
@@ -14,7 +15,13 @@ def main(url: str, pretty: bool, indent: int):
     """
     Read a JSON file from an S3 URL and print it to the console.
     """
-    json_data = s3.read(url, file_type='json')
+    if s3.is_s3_url(url):
+        json_data = s3.read(url, file_type='json')
+    elif os.path.exists(url):
+        with open(url, 'r') as f:
+            json_data = json.load(f)
+    else:
+        raise ValueError(f"JSON file not found: {url!r}")
 
     # Print the JSON data
     if pretty:
